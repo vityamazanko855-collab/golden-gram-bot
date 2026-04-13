@@ -3,6 +3,7 @@ import asyncio
 import logging
 import sys
 import random
+import json
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -14,12 +15,42 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-user_balances = {}
-game_history = []
+# ========== ФАЙЛЫ ДЛЯ СОХРАНЕНИЯ ==========
+BALANCES_FILE = "balances.json"
+HISTORY_FILE = "history.json"
+
+# ========== ЗАГРУЗКА ДАННЫХ ПРИ СТАРТЕ ==========
+def load_balances():
+    try:
+        with open(BALANCES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            # Ключи в JSON хранятся как строки, конвертируем обратно в int
+            return {int(k): v for k, v in data.items()}
+    except FileNotFoundError:
+        return {}
+
+def save_balances():
+    with open(BALANCES_FILE, "w", encoding="utf-8") as f:
+        json.dump(user_balances, f, ensure_ascii=False, indent=2)
+
+def load_history():
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+def save_history():
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(game_history, f, ensure_ascii=False, indent=2)
+
+# Загружаем данные при старте
+user_balances = load_balances()
+game_history = load_history()
 
 ADMIN_ID = 6003768110
 
-# ========== АДМИНСКАЯ ВЫДАЧА (только для создателя) ==========
+# ========== АДМИНСКАЯ ВЫДАЧА ==========
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -35,9 +66,10 @@ async def add_grams_slash(message: Message):
         await message.reply("❌ Сумма должна быть числом.")
         return
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
+    save_balances()
     await message.reply(f"✅ Баланс пополнен на {amount} GRAM.\n💰 Текущий баланс: {user_balances[ADMIN_ID]} GRAM")
 
-# ========== РУЛЕТКА: ЧИСЛО И ЦВЕТ ==========
+# ========== РУЛЕТКА ==========
 def spin_roulette():
     number = random.randint(0, 36)
     if number == 0:
@@ -77,7 +109,6 @@ def spin_roulette():
     
     return number, color_emoji, color_name, parity, dozen, column
 
-# ========== ОФОРМЛЕНИЕ ==========
 def format_balance(user_name: str, balance: int) -> str:
     return f"{user_name}\nБаланс: {balance} GRAM"
 
@@ -118,23 +149,25 @@ def check_win(bet_type: str, number: int, color_name: str, parity: str, dozen: i
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
 async def handle_message(message: Message):
+    global user_balances, game_history
+    
     user_id = message.from_user.id
     user_name = message.from_user.full_name
     text = message.text.strip()
     parts = text.split()
     
-    # ========== КОМАНДА "БАЛАНС" ==========
+    # ========== БАЛАНС ==========
     if text.lower() == "баланс":
         balance = user_balances.get(user_id, 0)
         await message.reply(format_balance(user_name, balance))
         return
     
-    # ========== КОМАНДА "ЛОГ" ==========
+    # ========== ЛОГ ==========
     if text.lower() in ["лог", "история"]:
         await message.reply(format_log())
         return
     
-    # ========== КОМАНДА "ТОП" (рейтинг богачей) ==========
+    # ========== ТОП ==========
     if text.lower() in ["топ", "/топ"]:
         if not user_balances:
             await message.reply("📊 Пока никто не играл.")
@@ -153,54 +186,105 @@ async def handle_message(message: Message):
         await message.reply(top_text)
         return
     
-    # ========== КОМАНДА "ДАТЬ" (перевод GRAM) ==========
+    # ========== ДАТЬ ==========
     if text.lower().startswith("дать ") or text.lower().startswith("/дать "):
-        # Убираем "дать" или "/дать" и берём сумму
         cmd_parts = text.split()
-        if len(cmd_parts) != 2:
-            await message.reply("❌ Формат: дать 1000 (в ответ на сообщение игрока)")
+        
+        # Вариант 1: дать @username 1000
+        if len(cmd_parts) == 3 and cmd_parts[1].startswith("@"):
+            target_username = cmd_parts[1][1:]
+            try:
+                amount = int(cmd_parts[2])
+            except:
+                await message.reply("❌ Сумма должна быть числом.")
+                return
+            
+            if amount <= 0:
+                await message.reply("❌ Сумма должна быть больше нуля.")
+                return
+            
+            sender_balance = user_balances.get(user_id, 0)
+            if amount > sender_balance:
+                await message.reply(f"❌ У вас недостаточно GRAM. Ваш баланс: {sender_balance}")
+                return
+            
+            try:
+                target_user = await bot.get_chat(f"@{target_username}")
+                target_id = target_user.id
+                target_name = target_user.full_name
+            except:
+                await message.reply(f"❌ Пользователь @{target_username} не найден.")
+                return
+            
+            if target_id == user_id:
+                await message.reply("❌ Нельзя передать GRAM самому себе.")
+                return
+            
+            if target_id == bot.id:
+                await message.reply("🤖 Бот не принимает GRAM. Переводи только живым игрокам!")
+                return
+            
+            user_balances[user_id] = sender_balance - amount
+            user_balances[target_id] = user_balances.get(target_id, 0) + amount
+            save_balances()
+            
+            await message.reply(
+                f"✅ Перевод выполнен!\n\n"
+                f"{user_name} ➡️ {target_name}\n"
+                f"Сумма: {amount} GRAM\n\n"
+                f"💰 Ваш новый баланс: {user_balances[user_id]} GRAM"
+            )
             return
         
-        try:
-            amount = int(cmd_parts[1])
-        except:
-            await message.reply("❌ Сумма должна быть числом.")
+        # Вариант 2: дать 1000 (в ответ на сообщение)
+        elif len(cmd_parts) == 2:
+            try:
+                amount = int(cmd_parts[1])
+            except:
+                await message.reply("❌ Сумма должна быть числом.")
+                return
+            
+            if amount <= 0:
+                await message.reply("❌ Сумма должна быть больше нуля.")
+                return
+            
+            if not message.reply_to_message:
+                await message.reply("❌ Ответь на сообщение игрока и напиши `дать 1000`\nИли используй: `дать @username 1000`")
+                return
+            
+            target_id = message.reply_to_message.from_user.id
+            target_name = message.reply_to_message.from_user.full_name
+            
+            if target_id == bot.id:
+                await message.reply("🤖 Нельзя перевести GRAM боту. Он и так богаче всех!")
+                return
+            
+            if target_id == user_id:
+                await message.reply("❌ Нельзя передать GRAM самому себе.")
+                return
+            
+            sender_balance = user_balances.get(user_id, 0)
+            if amount > sender_balance:
+                await message.reply(f"❌ У вас недостаточно GRAM. Ваш баланс: {sender_balance}")
+                return
+            
+            user_balances[user_id] = sender_balance - amount
+            user_balances[target_id] = user_balances.get(target_id, 0) + amount
+            save_balances()
+            
+            await message.reply(
+                f"✅ Перевод выполнен!\n\n"
+                f"{user_name} ➡️ {target_name}\n"
+                f"Сумма: {amount} GRAM\n\n"
+                f"💰 Ваш новый баланс: {user_balances[user_id]} GRAM"
+            )
             return
         
-        if amount <= 0:
-            await message.reply("❌ Сумма должна быть больше нуля.")
+        else:
+            await message.reply("❌ Формат: `дать @username 1000` или ответь на сообщение и напиши `дать 1000`")
             return
-        
-        # Проверяем, что это ответ на сообщение
-        if not message.reply_to_message:
-            await message.reply("❌ Эту команду нужно отправлять **в ответ** на сообщение игрока, которому хочешь передать GRAM.")
-            return
-        
-        target_id = message.reply_to_message.from_user.id
-        target_name = message.reply_to_message.from_user.full_name
-        
-        if target_id == user_id:
-            await message.reply("❌ Нельзя передать GRAM самому себе.")
-            return
-        
-        sender_balance = user_balances.get(user_id, 0)
-        if amount > sender_balance:
-            await message.reply(f"❌ У вас недостаточно GRAM. Ваш баланс: {sender_balance}")
-            return
-        
-        # Перевод
-        user_balances[user_id] = sender_balance - amount
-        user_balances[target_id] = user_balances.get(target_id, 0) + amount
-        
-        await message.reply(
-            f"✅ Перевод выполнен!\n\n"
-            f"{user_name} ➡️ {target_name}\n"
-            f"Сумма: {amount} GRAM\n\n"
-            f"💰 Ваш новый баланс: {user_balances[user_id]} GRAM"
-        )
-        return
     
-    # ========== КОМАНДА "ПОМОЩЬ" ==========
+    # ========== ПОМОЩЬ ==========
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         balance = user_balances.get(user_id, 0)
         await message.reply(
@@ -215,9 +299,10 @@ async def handle_message(message: Message):
             f"• 1-я • 2-я • 3-я\n\n"
             f"📌 КОНКРЕТНЫЕ ЧИСЛА:\n"
             f"• 1, 14, 36 и т.д.\n\n"
-            f"📌 ДИАПАЗОНЫ (Split):\n"
+            f"📌 ДИАПАЗОНЫ:\n"
             f"• 1-8, 11-18, 21-28 и др.\n\n"
             f"📌 ПЕРЕВОДЫ:\n"
+            f"• дать @username 1000\n"
             f"• дать 1000 (в ответ на сообщение)\n\n"
             f"📌 КОМАНДЫ:\n"
             f"• баланс — проверить счёт\n"
@@ -228,7 +313,7 @@ async def handle_message(message: Message):
         )
         return
     
-    # ========== ОБРАБОТКА СТАВКИ ==========
+    # ========== СТАВКА ==========
     if len(parts) >= 2:
         try:
             amount = int(parts[0])
@@ -280,6 +365,10 @@ async def handle_message(message: Message):
         game_history.append(f"{win_emoji} {win_num}")
         if len(game_history) > 10:
             game_history.pop(0)
+        
+        # Сохраняем данные
+        save_balances()
+        save_history()
         
         response = f"{user_name}\n\n"
         response += f"🎲 СТАВКА: {amount} GRAM на {bet_type}\n"
