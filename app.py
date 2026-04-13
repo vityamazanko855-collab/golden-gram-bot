@@ -28,9 +28,9 @@ def load_balances():
     except:
         return {}
 
-def save_balances():
+def save_balances(data):
     with open(BALANCES_FILE, "w", encoding="utf-8") as f:
-        json.dump(user_balances, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def load_history():
     try:
@@ -39,9 +39,9 @@ def load_history():
     except:
         return []
 
-def save_history():
+def save_history(data):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(game_history, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def load_bonus():
     try:
@@ -50,10 +50,11 @@ def load_bonus():
     except:
         return {}
 
-def save_bonus():
+def save_bonus(data):
     with open(BONUS_FILE, "w", encoding="utf-8") as f:
-        json.dump(last_bonus, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
+# Глобальные переменные
 user_balances = load_balances()
 game_history = load_history()
 last_bonus = load_bonus()
@@ -63,12 +64,9 @@ BONUS_AMOUNT = 10000
 BONUS_COOLDOWN = 24 * 60 * 60
 GAME_COOLDOWN = 15
 
-# ========== ИГРОВОЕ СОСТОЯНИЕ ==========
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
-
-ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
 
 # ========== РУЛЕТКА ==========
 def spin_roulette():
@@ -165,7 +163,6 @@ def get_multiplier(bet_type: str) -> int:
         return 3
     return 2
 
-# ========== ФОРМАТ ==========
 def format_balance(user_name: str, balance: int) -> str:
     return f"{user_name}\nБаланс: {balance} GRAM"
 
@@ -183,6 +180,7 @@ def format_log():
 # ========== АДМИН ==========
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
+    global user_balances
     if message.from_user.id != ADMIN_ID:
         await message.reply("❌ У вас нет прав для этой команды.")
         return
@@ -196,7 +194,7 @@ async def add_grams_slash(message: Message):
         await message.reply("❌ Сумма должна быть числом.")
         return
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
-    save_balances()
+    save_balances(user_balances)
     await message.reply(f"✅ Баланс пополнен на {amount} GRAM.\n💰 Текущий баланс: {user_balances[ADMIN_ID]} GRAM")
 
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
@@ -217,8 +215,8 @@ async def handle_message(message: Message):
         if now - last >= BONUS_COOLDOWN:
             user_balances[user_id] = user_balances.get(user_id, 0) + BONUS_AMOUNT
             last_bonus[user_id] = now
-            save_balances()
-            save_bonus()
+            save_balances(user_balances)
+            save_bonus(last_bonus)
             await message.reply(f"🎁 +{BONUS_AMOUNT} GRAM\n💰 Баланс: {user_balances[user_id]} GRAM")
         else:
             remaining = BONUS_COOLDOWN - (now - last)
@@ -227,7 +225,7 @@ async def handle_message(message: Message):
             await message.reply(f"⏰ Бонус через {hours} ч. {minutes} мин.")
         return
 
-    # ========== БАЛАНС (б или баланс) ==========
+    # ========== БАЛАНС ==========
     if text.lower() in ["б", "баланс"]:
         balance = user_balances.get(user_id, 0)
         await message.reply(format_balance(user_name, balance))
@@ -287,7 +285,7 @@ async def handle_message(message: Message):
                 return
             user_balances[user_id] = sender_balance - amount
             user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            save_balances()
+            save_balances(user_balances)
             await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {user_balances[user_id]} GRAM")
             return
         elif len(cmd_parts) == 2:
@@ -300,7 +298,7 @@ async def handle_message(message: Message):
                 await message.reply("❌ Сумма должна быть больше нуля.")
                 return
             if not message.reply_to_message:
-                await message.reply("❌ Ответь на сообщение игрока или используй `дать @username 1000`")
+                await message.reply("❌ Ответь на сообщение или используй `дать @username 1000`")
                 return
             target_id = message.reply_to_message.from_user.id
             target_name = message.reply_to_message.from_user.full_name
@@ -316,8 +314,11 @@ async def handle_message(message: Message):
                 return
             user_balances[user_id] = sender_balance - amount
             user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            save_balances()
+            save_balances(user_balances)
             await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {user_balances[user_id]} GRAM")
+            return
+        else:
+            await message.reply("❌ Формат: `дать @username 1000` или ответь на сообщение и напиши `дать 1000`")
             return
 
     # ========== ПОМОЩЬ ==========
@@ -347,21 +348,22 @@ async def handle_message(message: Message):
             return
 
         game_in_progress = True
-        gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим...")
 
-        await asyncio.sleep(3)
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
-        except:
-            pass
-        await asyncio.sleep(2)
+        # Сообщение о ожидании
+        wait_msg = await message.answer("⏳ Подождите 10 секунд... Результаты скоро будут!")
+        await asyncio.sleep(10)
+        await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
 
+        # Крутим рулетку
         win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
+
+        # Сохраняем в историю
         game_history.append(f"{win_emoji} {win_num}")
         if len(game_history) > 10:
             game_history.pop(0)
-        save_history()
+        save_history(game_history)
 
+        # Обрабатываем ставки
         results = []
         for bet in pending_bets:
             uid = bet["user_id"]
@@ -369,8 +371,10 @@ async def handle_message(message: Message):
             amount = bet["amount"]
             raw_bet = bet["raw_bet"]
             norm_bet = normalize_bet_type(raw_bet)
+
             win = check_win(norm_bet, win_num, win_color, win_parity, win_dozen, win_column)
             multiplier = get_multiplier(norm_bet)
+
             if win:
                 winnings = amount * multiplier
                 user_balances[uid] = user_balances.get(uid, 0) + winnings
@@ -378,10 +382,13 @@ async def handle_message(message: Message):
             else:
                 results.append(f"❌ {uname} -{amount} GRAM ({raw_bet})")
 
-        save_balances()
+        save_balances(user_balances)
+
+        # Итоговое сообщение
         result_text = f"🎯 ВЫПАЛО: {win_emoji} {win_num}\n\n" + "\n".join(results)
         await message.answer(result_text)
 
+        # Очистка
         pending_bets.clear()
         game_in_progress = False
         last_game_time = int(time.time())
@@ -409,8 +416,11 @@ async def handle_message(message: Message):
         if amount > balance:
             await message.reply(format_balance(user_name, balance) + "\n\n❌ Недостаточно GRAM.")
             return
+
+        # Списываем сразу
         user_balances[user_id] = balance - amount
-        save_balances()
+        save_balances(user_balances)
+
         pending_bets.append({
             "user_id": user_id,
             "user_name": user_name,
