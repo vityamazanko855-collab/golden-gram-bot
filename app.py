@@ -3,7 +3,7 @@ import asyncio
 import logging
 import sys
 import random
-import json
+import sqlite3
 import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -16,48 +16,76 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# ========== ФАЙЛЫ ==========
-BALANCES_FILE = "balances.json"
-HISTORY_FILE = "history.json"
-BONUS_FILE = "bonus.json"
+# ========== БАЗА ДАННЫХ ==========
+DB_FILE = "database.db"
 
-def load_balances():
-    try:
-        with open(BALANCES_FILE, "r", encoding="utf-8") as f:
-            return {int(k): v for k, v in json.load(f).items()}
-    except:
-        return {}
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS balances (user_id INTEGER PRIMARY KEY, balance INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, entry TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS bonus (user_id INTEGER PRIMARY KEY, last_time INTEGER)''')
+    conn.commit()
+    conn.close()
 
-def save_balances(data):
-    with open(BALANCES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def get_balance(user_id: int) -> int:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT balance FROM balances WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
 
-def load_history():
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return []
+def set_balance(user_id: int, balance: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO balances (user_id, balance) VALUES (?, ?)", (user_id, balance))
+    conn.commit()
+    conn.close()
 
-def save_history(data):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def add_balance(user_id: int, amount: int):
+    current = get_balance(user_id)
+    set_balance(user_id, current + amount)
 
-def load_bonus():
-    try:
-        with open(BONUS_FILE, "r", encoding="utf-8") as f:
-            return {int(k): v for k, v in json.load(f).items()}
-    except:
-        return {}
+def get_all_balances():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT user_id, balance FROM balances ORDER BY balance DESC")
+    rows = c.fetchall()
+    conn.close()
+    return rows
 
-def save_bonus(data):
-    with open(BONUS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def get_history():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT entry FROM history ORDER BY id DESC LIMIT 10")
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in reversed(rows)]
 
-# Глобальные переменные
-user_balances = load_balances()
-game_history = load_history()
-last_bonus = load_bonus()
+def add_history(entry: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO history (entry) VALUES (?)", (entry,))
+    conn.commit()
+    conn.close()
+
+def get_bonus_time(user_id: int) -> int:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT last_time FROM bonus WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def set_bonus_time(user_id: int, time_val: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO bonus (user_id, last_time) VALUES (?, ?)", (user_id, time_val))
+    conn.commit()
+    conn.close()
+
+init_db()
 
 ADMIN_ID = 6003768110
 BONUS_AMOUNT = 10000
@@ -167,11 +195,11 @@ def format_balance(user_name: str, balance: int) -> str:
     return f"{user_name}\nБаланс: {balance} GRAM"
 
 def format_log():
-    if not game_history:
+    history = get_history()
+    if not history:
         return "📋 История пуста."
-    last_10 = game_history[-10:]
-    row1 = " ".join(last_10[:5])
-    row2 = " ".join(last_10[5:]) if len(last_10) > 5 else ""
+    row1 = " ".join(history[:5])
+    row2 = " ".join(history[5:]) if len(history) > 5 else ""
     if row2:
         return f"{row1}\n{row2}"
     else:
@@ -180,7 +208,6 @@ def format_log():
 # ========== АДМИН ==========
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
-    global user_balances
     if message.from_user.id != ADMIN_ID:
         await message.reply("❌ У вас нет прав для этой команды.")
         return
@@ -193,14 +220,12 @@ async def add_grams_slash(message: Message):
     except:
         await message.reply("❌ Сумма должна быть числом.")
         return
-    user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
-    save_balances(user_balances)
-    await message.reply(f"✅ Баланс пополнен на {amount} GRAM.\n💰 Текущий баланс: {user_balances[ADMIN_ID]} GRAM")
+    add_balance(ADMIN_ID, amount)
+    await message.reply(f"✅ Баланс пополнен на {amount} GRAM.\n💰 Текущий баланс: {get_balance(ADMIN_ID)} GRAM")
 
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
 async def handle_message(message: Message):
-    global user_balances, game_history, last_bonus
     global pending_bets, game_in_progress, last_game_time
 
     user_id = message.from_user.id
@@ -211,13 +236,11 @@ async def handle_message(message: Message):
     # ========== БОНУС ==========
     if text.lower() == "бонус":
         now = int(time.time())
-        last = last_bonus.get(user_id, 0)
+        last = get_bonus_time(user_id)
         if now - last >= BONUS_COOLDOWN:
-            user_balances[user_id] = user_balances.get(user_id, 0) + BONUS_AMOUNT
-            last_bonus[user_id] = now
-            save_balances(user_balances)
-            save_bonus(last_bonus)
-            await message.reply(f"🎁 +{BONUS_AMOUNT} GRAM\n💰 Баланс: {user_balances[user_id]} GRAM")
+            add_balance(user_id, BONUS_AMOUNT)
+            set_bonus_time(user_id, now)
+            await message.reply(f"🎁 +{BONUS_AMOUNT} GRAM\n💰 Баланс: {get_balance(user_id)} GRAM")
         else:
             remaining = BONUS_COOLDOWN - (now - last)
             hours = remaining // 3600
@@ -227,7 +250,7 @@ async def handle_message(message: Message):
 
     # ========== БАЛАНС ==========
     if text.lower() in ["б", "баланс"]:
-        balance = user_balances.get(user_id, 0)
+        balance = get_balance(user_id)
         await message.reply(format_balance(user_name, balance))
         return
 
@@ -238,12 +261,12 @@ async def handle_message(message: Message):
 
     # ========== ТОП ==========
     if text.lower() in ["топ", "/топ"]:
-        if not user_balances:
+        rows = get_all_balances()
+        if not rows:
             await message.reply("📊 Пока никто не играл.")
             return
-        sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)
         top_text = "🏆 ТОП-10 БОГАЧЕЙ:\n\n"
-        for i, (uid, bal) in enumerate(sorted_users[:10], 1):
+        for i, (uid, bal) in enumerate(rows[:10], 1):
             try:
                 user_info = await bot.get_chat(uid)
                 name = user_info.full_name
@@ -266,7 +289,7 @@ async def handle_message(message: Message):
             if amount <= 0:
                 await message.reply("❌ Сумма должна быть больше нуля.")
                 return
-            sender_balance = user_balances.get(user_id, 0)
+            sender_balance = get_balance(user_id)
             if amount > sender_balance:
                 await message.reply(f"❌ Недостаточно GRAM. Ваш баланс: {sender_balance}")
                 return
@@ -283,10 +306,9 @@ async def handle_message(message: Message):
             if target_id == bot.id:
                 await message.reply("🤖 Бот не принимает GRAM.")
                 return
-            user_balances[user_id] = sender_balance - amount
-            user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            save_balances(user_balances)
-            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {user_balances[user_id]} GRAM")
+            set_balance(user_id, sender_balance - amount)
+            add_balance(target_id, amount)
+            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {get_balance(user_id)} GRAM")
             return
         elif len(cmd_parts) == 2:
             try:
@@ -308,14 +330,13 @@ async def handle_message(message: Message):
             if target_id == user_id:
                 await message.reply("❌ Нельзя передать GRAM самому себе.")
                 return
-            sender_balance = user_balances.get(user_id, 0)
+            sender_balance = get_balance(user_id)
             if amount > sender_balance:
                 await message.reply(f"❌ Недостаточно GRAM. Ваш баланс: {sender_balance}")
                 return
-            user_balances[user_id] = sender_balance - amount
-            user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            save_balances(user_balances)
-            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {user_balances[user_id]} GRAM")
+            set_balance(user_id, sender_balance - amount)
+            add_balance(target_id, amount)
+            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {get_balance(user_id)} GRAM")
             return
         else:
             await message.reply("❌ Формат: `дать @username 1000` или ответь на сообщение и напиши `дать 1000`")
@@ -323,7 +344,7 @@ async def handle_message(message: Message):
 
     # ========== ПОМОЩЬ ==========
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
-        balance = user_balances.get(user_id, 0)
+        balance = get_balance(user_id)
         await message.reply(
             f"{user_name}\n\n"
             f"🎰 GOLDEN GRAM ROULETTE\n\n"
@@ -348,22 +369,13 @@ async def handle_message(message: Message):
             return
 
         game_in_progress = True
-
-        # Сообщение о ожидании
-        wait_msg = await message.answer("⏳ Подождите 10 секунд... Результаты скоро будут!")
+        wait_msg = await message.answer("⏳ Подождите 10 секунд...")
         await asyncio.sleep(10)
         await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
 
-        # Крутим рулетку
         win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
+        add_history(f"{win_emoji} {win_num}")
 
-        # Сохраняем в историю
-        game_history.append(f"{win_emoji} {win_num}")
-        if len(game_history) > 10:
-            game_history.pop(0)
-        save_history(game_history)
-
-        # Обрабатываем ставки
         results = []
         for bet in pending_bets:
             uid = bet["user_id"]
@@ -377,18 +389,14 @@ async def handle_message(message: Message):
 
             if win:
                 winnings = amount * multiplier
-                user_balances[uid] = user_balances.get(uid, 0) + winnings
-                results.append(f"✅ {uname} +{winnings} GRAM ({amount} на {raw_bet})")
+                add_balance(uid, winnings)
+                results.append(f"✅ {uname} +{winnings} GRAM")
             else:
-                results.append(f"❌ {uname} -{amount} GRAM ({raw_bet})")
+                results.append(f"❌ {uname} -{amount} GRAM")
 
-        save_balances(user_balances)
-
-        # Итоговое сообщение
         result_text = f"🎯 ВЫПАЛО: {win_emoji} {win_num}\n\n" + "\n".join(results)
         await message.answer(result_text)
 
-        # Очистка
         pending_bets.clear()
         game_in_progress = False
         last_game_time = int(time.time())
@@ -404,30 +412,40 @@ async def handle_message(message: Message):
             remaining = GAME_COOLDOWN - (now - last_game_time)
             await message.reply(f"⏰ Подожди {remaining} сек.")
             return
+
         try:
             amount = int(parts[0])
         except:
             return
+
         if amount <= 0:
             await message.reply("❌ Ставка > 0")
             return
-        bet_type = " ".join(parts[1:])
-        balance = user_balances.get(user_id, 0)
-        if amount > balance:
-            await message.reply(format_balance(user_name, balance) + "\n\n❌ Недостаточно GRAM.")
+
+        # Все части после суммы — это список ставок
+        bet_items = " ".join(parts[1:]).split()
+        total_needed = amount * len(bet_items)
+        balance = get_balance(user_id)
+
+        if total_needed > balance:
+            await message.reply(format_balance(user_name, balance) + f"\n\n❌ Недостаточно GRAM (нужно {total_needed})")
             return
 
-        # Списываем сразу
-        user_balances[user_id] = balance - amount
-        save_balances(user_balances)
+        # Списываем общую сумму
+        set_balance(user_id, balance - total_needed)
 
-        pending_bets.append({
-            "user_id": user_id,
-            "user_name": user_name,
-            "amount": amount,
-            "raw_bet": bet_type
-        })
-        await message.reply(f"✅ Ставка принята: {user_name} {amount} GRAM на {bet_type}")
+        # Добавляем каждую ставку отдельно
+        accepted = []
+        for bet in bet_items:
+            pending_bets.append({
+                "user_id": user_id,
+                "user_name": user_name,
+                "amount": amount,
+                "raw_bet": bet
+            })
+            accepted.append(f"{amount} на {bet}")
+
+        await message.reply(f"✅ Ставки приняты:\n" + "\n".join(accepted))
 
 # ========== ЗАПУСК ==========
 async def main():
