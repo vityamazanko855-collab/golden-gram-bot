@@ -51,36 +51,21 @@ def spin_roulette():
     return number, color_emoji, color_name
 
 def is_valid_bet(bet: str) -> bool:
-    """Проверяет, является ли ставка допустимой"""
     bet = bet.lower().strip()
-    
-    # Цвета
     if bet in ["к", "красное", "красный", "red", "🔴", "ч", "чёрное", "черное", "чёрный", "черный", "black", "⚫"]:
         return True
-    
-    # Чёт/нечет
     if bet in ["чёт", "чет", "чётное", "четное", "even", "неч", "нечётное", "нечетное", "odd"]:
         return True
-    
-    # Зеро
     if bet in ["0", "зеро", "zero", "🟢"]:
         return True
-    
-    # Дюжины
     if bet in ["1-12", "13-24", "25-36"]:
         return True
-    
-    # Колонки
     if bet in ["1-я", "1я", "первая", "первый", "2-я", "2я", "вторая", "второй", "3-я", "3я", "третья", "третий"]:
         return True
-    
-    # Конкретные числа
     if bet.isdigit():
         num = int(bet)
         if 0 <= num <= 36:
             return True
-    
-    # Диапазоны
     if "-" in bet:
         try:
             parts = bet.split("-")
@@ -91,7 +76,6 @@ def is_valid_bet(bet: str) -> bool:
                     return True
         except:
             pass
-    
     return False
 
 def normalize_bet(bet: str) -> str:
@@ -216,7 +200,7 @@ async def handle(message: Message):
             return
         bal = user_balances.get(uid, 0)
         if bet > bal:
-            await message.reply(f"❌ Недостаточно GRAM")
+            await message.reply("❌ Недостаточно GRAM")
             return
         user_balances[uid] = bal - bet
         field = generate_mines_field()
@@ -462,10 +446,9 @@ async def handle(message: Message):
             await message.reply("❌ Ставка > 0")
             return
 
-        # Фильтруем только допустимые ставки
         all_bets = " ".join(parts[1:]).split()
         bets = [b for b in all_bets if is_valid_bet(b)]
-        
+
         if not bets:
             await message.reply("❌ Нет допустимых ставок. Примеры: красное, чёрное, чётное, 14, 1-12")
             return
@@ -558,4 +541,10 @@ async def mine_cash(call: CallbackQuery):
         return
 
     g["active"] = False
-    win = int(g["bet
+    win = int(g["bet"] * g["multiplier"])
+    user_balances[uid] = user_balances.get(uid, 0) + win
+
+    if uid not in user_stats:
+        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+    user_stats[uid]["played"] += 1
+    user_stats[uid]["wo
