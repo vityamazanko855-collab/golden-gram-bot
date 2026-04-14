@@ -547,4 +547,4 @@ async def mine_cash(call: CallbackQuery):
     if uid not in user_stats:
         user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
     user_stats[uid]["played"] += 1
-    user_stats[uid]["wo
+    user_stats[uid]["won"]
