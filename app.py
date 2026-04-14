@@ -26,6 +26,7 @@ ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
+MAX_BETS_PER_MESSAGE = 50  # Ограничение на количество ставок в одном сообщении
 
 pending_bets = []
 game_in_progress = False
@@ -332,48 +333,59 @@ async def handle_message(message: Message):
         await asyncio.sleep(10)
         await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
 
-        # ========== ОБРАБОТКА СТАВОК (КАЖДАЯ СВОЙ РАНДОМ) ==========
-        results = []
-        for bet in pending_bets:
-            uid = bet["user_id"]
-            uname = bet["user_name"]
-            amount = bet["amount"]
-            raw_bet = bet["raw_bet"]
+        try:
+            results = []
+            for bet in pending_bets:
+                uid = bet["user_id"]
+                uname = bet["user_name"]
+                amount = bet["amount"]
+                raw_bet = bet["raw_bet"]
 
-            # Для каждой ставки крутим свой рандом
-            win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
-            norm_bet = normalize_bet_type(raw_bet)
-            win = check_win(norm_bet, win_num, win_color, win_parity, win_dozen, win_column)
-            multiplier = get_multiplier(norm_bet)
+                win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
+                norm_bet = normalize_bet_type(raw_bet)
+                win = check_win(norm_bet, win_num, win_color, win_parity, win_dozen, win_column)
+                multiplier = get_multiplier(norm_bet)
 
-            # Обновляем статистику
-            if uid not in user_stats:
-                user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-            user_stats[uid]["played"] += 1
-            user_stats[uid]["total_bet"] += amount
-            user_levels[uid] = user_levels.get(uid, 0) + 1
+                if uid not in user_stats:
+                    user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+                user_stats[uid]["played"] += 1
+                user_stats[uid]["total_bet"] += amount
+                user_levels[uid] = user_levels.get(uid, 0) + 1
 
-            if win:
-                winnings = amount * multiplier
-                user_balances[uid] = user_balances.get(uid, 0) + winnings
-                user_stats[uid]["won"] += 1
-                user_stats[uid]["total_win"] += winnings
-                results.append(f"✅ {uname} +{winnings} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
-                game_history.append(f"{win_emoji} {win_num}")
+                if win:
+                    winnings = amount * multiplier
+                    user_balances[uid] = user_balances.get(uid, 0) + winnings
+                    user_stats[uid]["won"] += 1
+                    user_stats[uid]["total_win"] += winnings
+                    results.append(f"✅ {uname} +{winnings} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                    game_history.append(f"{win_emoji} {win_num}")
+                else:
+                    results.append(f"❌ {uname} -{amount} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                    game_history.append(f"{win_emoji} {win_num}")
+
+                # Ограничиваем историю
+                if len(game_history) > 10:
+                    game_history = game_history[-10:]
+
+            # Отправляем результаты порциями, чтобы не превысить лимит Telegram
+            if results:
+                chunk_size = 50
+                for i in range(0, len(results), chunk_size):
+                    chunk = results[i:i+chunk_size]
+                    if i == 0:
+                        await message.answer("🎯 РЕЗУЛЬТАТЫ:\n\n" + "\n".join(chunk))
+                    else:
+                        await message.answer("\n".join(chunk))
             else:
-                results.append(f"❌ {uname} -{amount} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
-                game_history.append(f"{win_emoji} {win_num}")
+                await message.answer("🎯 Нет результатов.")
 
-        # Ограничиваем историю 10 элементами
-        if len(game_history) > 10:
-            game_history = game_history[-10:]
-
-        result_text = "🎯 РЕЗУЛЬТАТЫ:\n\n" + "\n".join(results)
-        await message.answer(result_text)
-
-        pending_bets.clear()
-        game_in_progress = False
-        last_game_time = int(time.time())
+        except Exception as e:
+            logging.error(f"Ошибка при обработке ставок: {e}")
+            await message.answer("❌ Произошла ошибка при обработке ставок. Попробуйте позже.")
+        finally:
+            pending_bets.clear()
+            game_in_progress = False
+            last_game_time = int(time.time())
         return
 
     # ========== СТАВКА ==========
@@ -396,16 +408,21 @@ async def handle_message(message: Message):
             return
 
         bet_items = " ".join(parts[1:]).split()
+
+        # Ограничение на количество ставок в одном сообщении
+        if len(bet_items) > MAX_BETS_PER_MESSAGE:
+            await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок в одном сообщении. У вас: {len(bet_items)}")
+            return
+
         total_needed = amount * len(bet_items)
         balance = user_balances.get(user_id, 0)
 
         if total_needed > balance:
-            await message.reply(f"❌ Недостаточно GRAM (нужно {total_needed})")
+            await message.reply(f"❌ Недостаточно GRAM (нужно {total_needed:,})".replace(",", " "))
             return
 
         user_balances[user_id] = balance - total_needed
 
-        accepted = []
         for bet in bet_items:
             pending_bets.append({
                 "user_id": user_id,
@@ -413,9 +430,8 @@ async def handle_message(message: Message):
                 "amount": amount,
                 "raw_bet": bet
             })
-            accepted.append(f"✅ {amount} GRAM на {bet}")
 
-        await message.reply("\n".join(accepted))
+        await message.reply(f"✅ Принято {len(bet_items)} ставок на общую сумму {total_needed:,} GRAM".replace(",", " "))
 
 # ========== ЗАПУСК ==========
 async def main():
