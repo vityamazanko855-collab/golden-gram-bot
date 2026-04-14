@@ -450,12 +450,16 @@ async def handle(message: Message):
 async def mine_click(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
-    
+
     if uid not in mines_games:
         return
-        
+
     g = mines_games[uid]
     if not g["active"]:
+        return
+
+    # Если это кнопка "Забрать выигрыш", то не обрабатываем здесь
+    if call.data == "m_cash":
         return
 
     parts = call.data.split("_")
@@ -501,20 +505,20 @@ async def mine_click(call: CallbackQuery):
 async def mine_cash(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
-    
+
     if uid not in mines_games:
         return
-        
+
     g = mines_games[uid]
     if not g["active"]:
         return
 
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
-    
+
     # НАЧИСЛЯЕМ
     user_balances[uid] = user_balances.get(uid, 0) + win
-    
+
     # Обновляем статистику
     if uid not in user_stats:
         user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
@@ -523,7 +527,7 @@ async def mine_cash(call: CallbackQuery):
     user_stats[uid]["total_bet"] += g["bet"]
     user_stats[uid]["total_win"] += win
     user_levels[uid] = user_levels.get(uid, 0) + 1
-    
+
     del mines_games[uid]
 
     await call.message.edit_text(
