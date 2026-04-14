@@ -28,7 +28,8 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
+# ТВОЯ ГИФКА
+ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
 
 pending_bets = []
 game_in_progress = False
@@ -347,14 +348,15 @@ async def handle(message: Message):
         try:
             gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим...")
         except:
-            gif_msg = await message.answer("<code>⏳ 10 секунд...</code>", parse_mode="HTML")
+            gif_msg = None
 
         await asyncio.sleep(10)
 
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
-        except:
-            pass
+        if gif_msg:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
+            except:
+                pass
 
         try:
             win_num, win_emoji, win_color = spin_roulette()
