@@ -111,7 +111,6 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
-# ========== МИННОЕ ПОЛЕ 5x5 ==========
 def generate_mines_field():
     field = [["⭐" for _ in range(5)] for _ in range(5)]
     mines = random.sample(range(25), 3)
@@ -446,21 +445,23 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН ==========
+# ========== КНОПКИ МИН (ИСПРАВЛЕНО) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
-    await call.answer()
     uid = call.from_user.id
     if uid not in mines_games:
+        await call.answer("Игра не найдена")
         return
     g = mines_games[uid]
     if not g.get("active"):
+        await call.answer("Игра завершена")
         return
 
     parts = call.data.split("_")
     row, col = int(parts[1]), int(parts[2])
 
     if (row, col) in g["revealed"]:
+        await call.answer("Уже открыто")
         return
 
     g["revealed"].append((row, col))
@@ -476,6 +477,7 @@ async def mine_click(call: CallbackQuery):
         except:
             pass
         del mines_games[uid]
+        await call.answer("Мина! Проигрыш")
         return
 
     g["multiplier"] += 0.14
@@ -501,15 +503,17 @@ async def mine_click(call: CallbackQuery):
         )
     except:
         pass
+    await call.answer()
 
 @dp.callback_query(F.data == "m_cash")
 async def mine_cash(call: CallbackQuery):
-    await call.answer()
     uid = call.from_user.id
     if uid not in mines_games:
+        await call.answer("Игра не найдена")
         return
     g = mines_games[uid]
     if not g.get("active"):
+        await call.answer("Игра уже завершена")
         return
 
     g["active"] = False
@@ -526,6 +530,7 @@ async def mine_cash(call: CallbackQuery):
     except:
         pass
     del mines_games[uid]
+    await call.answer(f"+{format_amount(win)} GRAM")
 
 # ========== ЗАПУСК ==========
 async def main():
