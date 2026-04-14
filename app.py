@@ -25,16 +25,36 @@ ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
-MAX_BETS_PER_MESSAGE = 200
+MAX_BETS_PER_MESSAGE = 500  # Увеличено до 500
+MAX_MESSAGE_LENGTH = 4000
 
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
-game_start_time = 0  # Для определения зависшей игры
+game_start_time = 0
 
 # ========== ФОРМАТИРОВАНИЕ ==========
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
+
+# ========== ОТПРАВКА ДЛИННЫХ СООБЩЕНИЙ ==========
+async def send_long_message(chat_id: int, text: str, parse_mode: str = "HTML"):
+    if len(text) <= MAX_MESSAGE_LENGTH:
+        await bot.send_message(chat_id, text, parse_mode=parse_mode)
+    else:
+        parts = []
+        current = ""
+        for line in text.split("\n"):
+            if len(current) + len(line) + 1 > MAX_MESSAGE_LENGTH:
+                parts.append(current)
+                current = line
+            else:
+                current += "\n" + line if current else line
+        if current:
+            parts.append(current)
+        for part in parts:
+            await bot.send_message(chat_id, part, parse_mode=parse_mode)
+            await asyncio.sleep(0.5)
 
 # ========== РУЛЕТКА ==========
 def spin_roulette():
@@ -87,7 +107,6 @@ def get_level(exp: int) -> int:
 def check_and_reset_stuck_game():
     global game_in_progress, pending_bets, last_game_time
     if game_in_progress:
-        # Если игра висит больше 60 секунд - принудительно сбрасываем
         if time.time() - game_start_time > 60:
             game_in_progress = False
             pending_bets.clear()
@@ -135,7 +154,6 @@ async def handle_message(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # Проверяем и сбрасываем зависшую игру
     if check_and_reset_stuck_game():
         await message.answer("⚠️ Предыдущая игра была принудительно завершена из-за зависания. Можете делать новые ставки.")
 
@@ -167,7 +185,8 @@ async def handle_message(message: Message):
         level = get_level(exp)
         winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
         profit = stats["total_win"] - stats["total_bet"]
-        await message.reply(
+        await send_long_message(
+            message.chat.id,
             f"<code>👤 {user_name}\n"
             f"🆔 {user_id}\n"
             f"📊 Уровень: {level}\n"
@@ -175,8 +194,7 @@ async def handle_message(message: Message):
             f"🎲 Игр: {stats['played']}\n"
             f"🏆 Побед: {stats['won']}\n"
             f"📈 Винрейт: {winrate:.1f}%\n"
-            f"📊 Профит: {format_amount(profit)} GRAM</code>",
-            parse_mode="HTML"
+            f"📊 Профит: {format_amount(profit)} GRAM</code>"
         )
         return
 
@@ -223,7 +241,7 @@ async def handle_message(message: Message):
                 name = f"ID: {uid}"
             top_text += f"{i}. {name} — {format_amount(bal)} GRAM\n"
         top_text += "</code>"
-        await message.reply(top_text, parse_mode="HTML")
+        await send_long_message(message.chat.id, top_text)
         return
 
     # ========== ДАТЬ ==========
@@ -294,7 +312,6 @@ async def handle_message(message: Message):
     if text.lower() == "го":
         now = int(time.time())
         
-        # Проверяем и сбрасываем зависшую игру
         if game_in_progress and (time.time() - game_start_time > 60):
             game_in_progress = False
             pending_bets.clear()
@@ -320,7 +337,6 @@ async def handle_message(message: Message):
         try:
             win_num, win_emoji = spin_roulette()
 
-            # 1. Список всех ставок
             all_bets_lines = []
             for bet in pending_bets:
                 uname = bet["user_name"]
@@ -328,7 +344,6 @@ async def handle_message(message: Message):
                 raw_bet = bet["raw_bet"]
                 all_bets_lines.append(f"{uname} {format_amount(amount)} GRAM на {raw_bet}")
 
-            # 2. Результаты выигрышей
             win_results = []
             for bet in pending_bets:
                 uid = bet["user_id"]
@@ -357,19 +372,17 @@ async def handle_message(message: Message):
                     user_stats[uid]["total_bet"] += amount
                     user_levels[uid] = user_levels.get(uid, 0) + 1
 
-            # Финальное сообщение
             final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
             final_message += "\n".join(all_bets_lines)
             if win_results:
                 final_message += "\n\n" + "\n".join(win_results)
             final_message += "</code>"
 
-            await message.answer(final_message, parse_mode="HTML")
+            await send_long_message(message.chat.id, final_message)
 
         except Exception as e:
             logging.error(f"Ошибка в игре: {e}")
             await message.answer("❌ Произошла ошибка при обработке игры. Ставки возвращены.")
-            # Возвращаем ставки при ошибке
             for bet in pending_bets:
                 uid = bet["user_id"]
                 amount = bet["amount"]
@@ -383,7 +396,6 @@ async def handle_message(message: Message):
 
     # ========== СТАВКА ==========
     if len(parts) >= 2:
-        # Проверяем и сбрасываем зависшую игру
         if check_and_reset_stuck_game():
             await message.answer("⚠️ Предыдущая игра была сброшена. Можете делать ставки.")
         
@@ -424,7 +436,7 @@ async def handle_message(message: Message):
             })
             accepted_lines.append(f"Ставка принята: {user_name} {format_amount(amount)} GRAM на {bet}")
 
-        await message.reply("<code>" + "\n".join(accepted_lines) + "</code>", parse_mode="HTML")
+        await send_long_message(message.chat.id, "<code>" + "\n".join(accepted_lines) + "</code>")
 
 # ========== ЗАПУСК ==========
 async def main():
