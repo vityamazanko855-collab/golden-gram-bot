@@ -30,6 +30,7 @@ MAX_BETS_PER_MESSAGE = 200
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
+game_start_time = 0  # Для определения зависшей игры
 
 # ========== ФОРМАТИРОВАНИЕ ==========
 def format_amount(amount: int) -> str:
@@ -82,6 +83,18 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
+# ========== ПРОВЕРКА И СБРОС ЗАВИСШЕЙ ИГРЫ ==========
+def check_and_reset_stuck_game():
+    global game_in_progress, pending_bets, last_game_time
+    if game_in_progress:
+        # Если игра висит больше 60 секунд - принудительно сбрасываем
+        if time.time() - game_start_time > 60:
+            game_in_progress = False
+            pending_bets.clear()
+            last_game_time = int(time.time())
+            return True
+    return False
+
 # ========== АДМИН: ВЫДАЧА GRAM ==========
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
@@ -100,15 +113,31 @@ async def add_grams_slash(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM\n💰 Баланс: {format_amount(user_balances[ADMIN_ID])} GRAM")
 
+# ========== СБРОС ЗАВИСШЕЙ ИГРЫ (ДЛЯ АДМИНА) ==========
+@dp.message(Command("reset_game"))
+async def reset_game_slash(message: Message):
+    global game_in_progress, pending_bets, last_game_time
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("❌ У вас нет прав для этой команды.")
+        return
+    game_in_progress = False
+    pending_bets.clear()
+    last_game_time = int(time.time())
+    await message.reply("✅ Состояние игры сброшено.")
+
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
 async def handle_message(message: Message):
-    global pending_bets, game_in_progress, last_game_time
+    global pending_bets, game_in_progress, last_game_time, game_start_time
 
     user_id = message.from_user.id
     user_name = message.from_user.full_name
     text = message.text.strip()
     parts = text.split()
+
+    # Проверяем и сбрасываем зависшую игру
+    if check_and_reset_stuck_game():
+        await message.answer("⚠️ Предыдущая игра была принудительно завершена из-за зависания. Можете делать новые ставки.")
 
     # ========== ОТМЕНА ==========
     if text.lower() in ["отмена", "отменить"]:
@@ -264,6 +293,13 @@ async def handle_message(message: Message):
     # ========== ГО ==========
     if text.lower() == "го":
         now = int(time.time())
+        
+        # Проверяем и сбрасываем зависшую игру
+        if game_in_progress and (time.time() - game_start_time > 60):
+            game_in_progress = False
+            pending_bets.clear()
+            await message.answer("⚠️ Предыдущая игра зависла и была сброшена. Запускаем новую.")
+        
         if game_in_progress:
             await message.reply("⏳ Дождитесь окончания!")
             return
@@ -275,65 +311,82 @@ async def handle_message(message: Message):
             return
 
         game_in_progress = True
+        game_start_time = time.time()
+        
         wait_msg = await message.answer("<code>⏳ Подождите 10 секунд...</code>", parse_mode="HTML")
         await asyncio.sleep(10)
         await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
 
-        win_num, win_emoji = spin_roulette()
+        try:
+            win_num, win_emoji = spin_roulette()
 
-        # 1. Список всех ставок
-        all_bets_lines = []
-        for bet in pending_bets:
-            uname = bet["user_name"]
-            amount = bet["amount"]
-            raw_bet = bet["raw_bet"]
-            all_bets_lines.append(f"{uname} {format_amount(amount)} GRAM на {raw_bet}")
+            # 1. Список всех ставок
+            all_bets_lines = []
+            for bet in pending_bets:
+                uname = bet["user_name"]
+                amount = bet["amount"]
+                raw_bet = bet["raw_bet"]
+                all_bets_lines.append(f"{uname} {format_amount(amount)} GRAM на {raw_bet}")
 
-        # 2. Результаты выигрышей
-        win_results = []
-        for bet in pending_bets:
-            uid = bet["user_id"]
-            uname = bet["user_name"]
-            amount = bet["amount"]
-            raw_bet = bet["raw_bet"]
+            # 2. Результаты выигрышей
+            win_results = []
+            for bet in pending_bets:
+                uid = bet["user_id"]
+                uname = bet["user_name"]
+                amount = bet["amount"]
+                raw_bet = bet["raw_bet"]
 
-            if check_win(raw_bet, win_num):
-                multiplier = get_multiplier(raw_bet)
-                winnings = amount * multiplier
-                user_balances[uid] = user_balances.get(uid, 0) + winnings
-                
-                if uid not in user_stats:
-                    user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-                user_stats[uid]["played"] += 1
-                user_stats[uid]["won"] += 1
-                user_stats[uid]["total_bet"] += amount
-                user_stats[uid]["total_win"] += winnings
-                user_levels[uid] = user_levels.get(uid, 0) + 1
-                
-                win_results.append(f"{uname} ставка {format_amount(amount)} GRAM выиграл {format_amount(winnings)} на {raw_bet}")
-            else:
-                if uid not in user_stats:
-                    user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-                user_stats[uid]["played"] += 1
-                user_stats[uid]["total_bet"] += amount
-                user_levels[uid] = user_levels.get(uid, 0) + 1
+                if check_win(raw_bet, win_num):
+                    multiplier = get_multiplier(raw_bet)
+                    winnings = amount * multiplier
+                    user_balances[uid] = user_balances.get(uid, 0) + winnings
+                    
+                    if uid not in user_stats:
+                        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+                    user_stats[uid]["played"] += 1
+                    user_stats[uid]["won"] += 1
+                    user_stats[uid]["total_bet"] += amount
+                    user_stats[uid]["total_win"] += winnings
+                    user_levels[uid] = user_levels.get(uid, 0) + 1
+                    
+                    win_results.append(f"{uname} ставка {format_amount(amount)} GRAM выиграл {format_amount(winnings)} на {raw_bet}")
+                else:
+                    if uid not in user_stats:
+                        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+                    user_stats[uid]["played"] += 1
+                    user_stats[uid]["total_bet"] += amount
+                    user_levels[uid] = user_levels.get(uid, 0) + 1
 
-        # Финальное сообщение
-        final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
-        final_message += "\n".join(all_bets_lines)
-        if win_results:
-            final_message += "\n\n" + "\n".join(win_results)
-        final_message += "</code>"
+            # Финальное сообщение
+            final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
+            final_message += "\n".join(all_bets_lines)
+            if win_results:
+                final_message += "\n\n" + "\n".join(win_results)
+            final_message += "</code>"
 
-        await message.answer(final_message, parse_mode="HTML")
+            await message.answer(final_message, parse_mode="HTML")
 
-        pending_bets.clear()
-        game_in_progress = False
-        last_game_time = int(time.time())
+        except Exception as e:
+            logging.error(f"Ошибка в игре: {e}")
+            await message.answer("❌ Произошла ошибка при обработке игры. Ставки возвращены.")
+            # Возвращаем ставки при ошибке
+            for bet in pending_bets:
+                uid = bet["user_id"]
+                amount = bet["amount"]
+                user_balances[uid] = user_balances.get(uid, 0) + amount
+
+        finally:
+            pending_bets.clear()
+            game_in_progress = False
+            last_game_time = int(time.time())
         return
 
     # ========== СТАВКА ==========
     if len(parts) >= 2:
+        # Проверяем и сбрасываем зависшую игру
+        if check_and_reset_stuck_game():
+            await message.answer("⚠️ Предыдущая игра была сброшена. Можете делать ставки.")
+        
         if game_in_progress:
             await message.reply("⏳ Дождитесь окончания!")
             return
