@@ -30,7 +30,7 @@ MAX_BETS_PER_MESSAGE = 500
 MAX_LINES_PER_MESSAGE = 20
 MAX_RESULT_LINES = 50
 
-# Гифка для рулетки
+# Гифка рулетки
 ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
 
 pending_bets = []
@@ -184,7 +184,7 @@ async def handle_message(message: Message):
         new_pending = [bet for bet in pending_bets if bet["user_id"] != user_id]
         pending_bets.clear()
         pending_bets.extend(new_pending)
-        
+
         user_balances[user_id] = user_balances.get(user_id, 0) + total_refund
         await message.reply(f"✅ Ставка отменена\n💰 Возвращено: {format_amount(total_refund)} GRAM")
         return
@@ -335,12 +335,12 @@ async def handle_message(message: Message):
     # ========== ГО ==========
     if text.lower() == "го":
         now = int(time.time())
-        
+
         if game_in_progress and (time.time() - game_start_time > 60):
             game_in_progress = False
             pending_bets.clear()
             await message.answer("⚠️ Предыдущая игра зависла и была сброшена. Запускаем новую.")
-        
+
         if game_in_progress:
             await message.reply("⏳ Дождитесь окончания!")
             return
@@ -353,27 +353,31 @@ async def handle_message(message: Message):
 
         game_in_progress = True
         game_start_time = time.time()
-        
-        # Отправляем гифку с рулеткой
-        gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим рулетку...")
-        
-        await asyncio.sleep(10)
-        
-        # Удаляем гифку
+
+        # Пытаемся отправить гифку
+        gif_msg = None
         try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
-        except Exception:
-            pass
+            gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим рулетку...")
+        except Exception as e:
+            logging.error(f"Не удалось отправить гифку: {e}")
+            await message.answer("<code>⏳ Подождите 10 секунд...</code>", parse_mode="HTML")
+
+        await asyncio.sleep(10)
+
+        # Удаляем гифку, если она была отправлена
+        if gif_msg:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
+            except Exception:
+                pass
 
         try:
             win_num, win_emoji = spin_roulette()
-            
-            # Сохраняем в историю
+
             game_history.append(f"{win_emoji} {win_num}")
             if len(game_history) > 10:
                 game_history.pop(0)
 
-            # Список всех ставок
             all_bets_lines = []
             for bet in pending_bets:
                 uname = bet["user_name"]
@@ -381,7 +385,6 @@ async def handle_message(message: Message):
                 raw_bet = bet["raw_bet"]
                 all_bets_lines.append(f"{uname} {format_amount(amount)} GRAM на {raw_bet}")
 
-            # Список выигрышей
             win_results = []
             for bet in pending_bets:
                 uid = bet["user_id"]
@@ -397,7 +400,7 @@ async def handle_message(message: Message):
                         multiplier = get_multiplier(raw_bet)
                         winnings = amount * multiplier
                         user_balances[uid] = user_balances.get(uid, 0) + winnings
-                        
+
                         if uid not in user_stats:
                             user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
                         user_stats[uid]["played"] += 1
@@ -405,7 +408,7 @@ async def handle_message(message: Message):
                         user_stats[uid]["total_bet"] += amount
                         user_stats[uid]["total_win"] += winnings
                         user_levels[uid] = user_levels.get(uid, 0) + 1
-                        
+
                         win_results.append(f"{uname} ставка {format_amount(amount)} GRAM выиграл {format_amount(winnings)} на {raw_bet}")
                     else:
                         if uid not in user_stats:
@@ -417,14 +420,11 @@ async def handle_message(message: Message):
                     logging.error(f"Ошибка в ставке {raw_bet}: {e}")
                     user_balances[uid] = user_balances.get(uid, 0) + amount
 
-            # Отправляем заголовок
             await message.answer(f"<code>Рулетка: {win_num} {win_emoji}</code>", parse_mode="HTML")
-            
-            # Отправляем все ставки порциями
+
             if all_bets_lines:
                 await send_in_chunks(message.chat.id, all_bets_lines, chunk_size=MAX_RESULT_LINES)
-            
-            # Отправляем выигрыши порциями
+
             if win_results:
                 await send_in_chunks(message.chat.id, win_results, chunk_size=MAX_RESULT_LINES)
 
@@ -446,7 +446,7 @@ async def handle_message(message: Message):
     if len(parts) >= 2:
         if check_and_reset_stuck_game():
             await message.answer("⚠️ Предыдущая игра была сброшена. Можете делать ставки.")
-        
+
         if game_in_progress:
             await message.reply("⏳ Дождитесь окончания!")
             return
