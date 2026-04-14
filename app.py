@@ -3,9 +3,10 @@ import asyncio
 import logging
 import random
 import time
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
 
@@ -14,12 +15,13 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Данные в памяти
+# Данные
 user_balances = {}
 user_stats = {}
 user_levels = {}
 daily_streak = {}
 game_history = []
+mines_games = {}
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
@@ -27,7 +29,6 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-# ГИФКА
 ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
 
 pending_bets = []
@@ -110,6 +111,28 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
+# ========== МИННОЕ ПОЛЕ ==========
+def generate_mines_field():
+    field = [["⭐" for _ in range(5)] for _ in range(5)]
+    mines = random.sample(range(25), 3)
+    for m in mines:
+        row, col = m // 5, m % 5
+        field[row][col] = "💣"
+    return field
+
+def format_mines_field(field, revealed):
+    lines = []
+    for i in range(5):
+        row = ""
+        for j in range(5):
+            if (i, j) in revealed:
+                row += field[i][j] + " "
+            else:
+                row += "❓ "
+        lines.append(row.strip())
+    return "\n".join(lines)
+
+# ========== АДМИН ==========
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -127,6 +150,7 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
+# ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -136,7 +160,45 @@ async def handle(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # Отмена
+    # ========== МИННОЕ ПОЛЕ ==========
+    if text.lower().startswith("мины "):
+        try:
+            bet = int(parts[1])
+        except:
+            await message.reply("❌ Ставка числом. Пример: мины 100")
+            return
+        if bet <= 0:
+            await message.reply("❌ Ставка > 0")
+            return
+        bal = user_balances.get(uid, 0)
+        if bet > bal:
+            await message.reply(f"❌ Недостаточно GRAM. Баланс: {format_amount(bal)}")
+            return
+        user_balances[uid] = bal - bet
+        field = generate_mines_field()
+        mines_games[uid] = {
+            "bet": bet,
+            "field": field,
+            "revealed": [],
+            "multiplier": 1.0,
+            "active": True
+        }
+        kb = InlineKeyboardBuilder()
+        for i in range(5):
+            row_btns = []
+            for j in range(5):
+                row_btns.append(types.InlineKeyboardButton(text="❓", callback_data=f"mine_{i}_{j}"))
+            kb.row(*row_btns)
+        kb.row(types.InlineKeyboardButton(text="💰 Забрать", callback_data="mine_cashout"))
+        await message.answer(
+            f"💎 {name}, вы начали игру минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
+            f"{format_mines_field(field, [])}\n\n"
+            f"Текущий множитель: x1.0\nПотенциальный выигрыш: {format_amount(bet)} GRAM",
+            reply_markup=kb.as_markup()
+        )
+        return
+
+    # ========== ОТМЕНА ==========
     if text.lower() in ["отмена", "отменить"]:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -151,7 +213,7 @@ async def handle(message: Message):
         await message.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
         return
 
-    # Профиль
+    # ========== ПРОФИЛЬ ==========
     if text.lower() in ["профиль", "profile"]:
         bal = user_balances.get(uid, 0)
         stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
@@ -166,7 +228,7 @@ async def handle(message: Message):
         )
         return
 
-    # Бонус
+    # ========== БОНУС ==========
     if text.lower() == "бонус":
         now = int(time.time())
         ds = daily_streak.get(uid, {"last": 0, "streak": 0})
@@ -185,13 +247,13 @@ async def handle(message: Message):
             await message.reply(f"<code>⏰ Через {h} ч {m} мин</code>", parse_mode="HTML")
         return
 
-    # Баланс
+    # ========== БАЛАНС ==========
     if text.lower() in ["б", "баланс"]:
         bal = user_balances.get(uid, 0)
         await message.reply(f"<code>{name}\nБаланс: {format_amount(bal)} GRAM</code>", parse_mode="HTML")
         return
 
-    # Лог
+    # ========== ЛОГ ==========
     if text.lower() in ["лог", "история"]:
         if not game_history:
             await message.reply("📋 Пусто")
@@ -202,7 +264,7 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    # Топ
+    # ========== ТОП ==========
     if text.lower() == "топ":
         if not user_balances:
             await message.reply("📊 Пусто")
@@ -219,10 +281,25 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    # Дать
+    # ========== ДАТЬ ==========
     if text.lower().startswith("дать "):
         p = text.split()
-        if len(p) == 3 and p[1].startswith("@"):
+        # Дать всё (по ответу)
+        if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
+            t = message.reply_to_message.from_user
+            if t.id == uid:
+                await message.reply("❌ Нельзя себе")
+                return
+            amt = user_balances.get(uid, 0)
+            if amt <= 0:
+                await message.reply("❌ У вас 0 GRAM")
+                return
+            user_balances[uid] = 0
+            user_balances[t.id] = user_balances.get(t.id, 0) + amt
+            await message.reply(f"✅ Все {format_amount(amt)} GRAM → {t.full_name}")
+            return
+        # Дать сумму по @username
+        elif len(p) == 3 and p[1].startswith("@"):
             try:
                 amt = int(p[2])
             except:
@@ -238,6 +315,7 @@ async def handle(message: Message):
                 await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
             except:
                 await message.reply("❌ Не найден")
+        # Дать сумму по ответу
         elif len(p) == 2 and message.reply_to_message:
             try:
                 amt = int(p[1])
@@ -256,20 +334,21 @@ async def handle(message: Message):
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
         return
 
-    # Помощь
+    # ========== ПОМОЩЬ ==========
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
             "🎲 СТАВКИ:\n100 чёрное\n250 красное\n500 чётное\n1000 14\n2000 0\n5000 1-12\n10000 23-34\n"
-            "Можно много: 1000 14 23-34 к 0\n\n"
+            "Много: 1000 14 23-34 к 0\n\n"
+            "💣 МИНЫ:\nмины 100 — начать игру\n\n"
             "🕹️ КОМАНДЫ:\nб — баланс\nлог — история\nтоп — рейтинг\nпрофиль — статистика\n"
-            "бонус — ежед. награда\nго — запуск\nотмена — отмена ставок\nдать @user 1000\n\n"
-            "📊 МНОЖИТЕЛИ:\nЧисло: x36\nКрасное/Чёрное: x2\nЧётное/Нечётное: x2\n"
-            "Дюжина: x3\nДиапазон: по расчёту</code>", parse_mode="HTML"
+            "бонус — ежед. награда\nго — запуск рулетки\nотмена — отмена ставок\n"
+            "дать @user 1000 — перевод\nдать всё (ответом) — отдать всё\n\n"
+            "📊 МНОЖИТЕЛИ:\nЧисло: x36\nКрасное/Чёрное: x2\nЧётное/Нечётное: x2\nДюжина: x3</code>", parse_mode="HTML"
         )
         return
 
-    # ГО
+    # ========== ГО ==========
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
@@ -283,8 +362,6 @@ async def handle(message: Message):
             return
 
         game_in_progress = True
-
-        # ГИФКА
         gif_msg = None
         try:
             gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим...")
@@ -335,7 +412,6 @@ async def handle(message: Message):
                     user_levels[b["user_id"]] = user_levels.get(b["user_id"], 0) + 1
 
             await message.answer(f"<code>Рулетка: {win_num} {win_emoji}</code>", parse_mode="HTML")
-
             for i in range(0, len(all_bets), 50):
                 await message.answer("<code>" + "\n".join(all_bets[i:i+50]) + "</code>", parse_mode="HTML")
             for i in range(0, len(win_res), 50):
@@ -353,7 +429,7 @@ async def handle(message: Message):
             last_game_time = int(time.time())
         return
 
-    # Ставка
+    # ========== СТАВКА ==========
     if len(parts) >= 2:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -388,8 +464,75 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-async def main():
-    await dp.start_polling(bot)
+# ========== ОБРАБОТЧИК КНОПОК МИН ==========
+@dp.callback_query(F.data.startswith("mine_"))
+async def mine_click(call: CallbackQuery):
+    uid = call.from_user.id
+    if uid not in mines_games or not mines_games[uid].get("active"):
+        await call.answer("Игра не активна")
+        return
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    game = mines_games[uid]
+    parts = call.data.split("_")
+    row, col = int(parts[1]), int(parts[2])
+
+    if (row, col) in game["revealed"]:
+        await call.answer("Уже открыто")
+        return
+
+    game["revealed"].append((row, col))
+    cell = game["field"][row][col]
+
+    if cell == "💣":
+        game["active"] = False
+        await call.message.edit_text(
+            f"💥 {call.from_user.full_name}, вы попали на мину!\n"
+            f"❌ Вы проиграли {format_amount(game['bet'])} GRAM.\n\n"
+            f"{format_mines_field(game['field'], game['revealed'])}"
+        )
+        del mines_games[uid]
+        await call.answer("Мина! Проигрыш.")
+        return
+
+    game["multiplier"] += 0.4
+    potential = int(game["bet"] * game["multiplier"])
+
+    kb = InlineKeyboardBuilder()
+    for i in range(5):
+        row_btns = []
+        for j in range(5):
+            if (i, j) in game["revealed"]:
+                row_btns.append(types.InlineKeyboardButton(text=game["field"][i][j], callback_data="done"))
+            else:
+                row_btns.append(types.InlineKeyboardButton(text="❓", callback_data=f"mine_{i}_{j}"))
+        kb.row(*row_btns)
+    kb.row(types.InlineKeyboardButton(text="💰 Забрать", callback_data="mine_cashout"))
+
+    await call.message.edit_text(
+        f"💎 {call.from_user.full_name}, минное поле!\n☀️ Ставка: {format_amount(game['bet'])} GRAM\n\n"
+        f"{format_mines_field(game['field'], game['revealed'])}\n\n"
+        f"Текущий множитель: x{game['multiplier']:.1f}\n"
+        f"Потенциальный выигрыш: {format_amount(potential)} GRAM",
+        reply_markup=kb.as_markup()
+    )
+    await call.answer("⭐ Звезда!")
+
+@dp.callback_query(F.data == "mine_cashout")
+async def mine_cashout(call: CallbackQuery):
+    uid = call.from_user.id
+    if uid not in mines_games or not mines_games[uid].get("active"):
+        await call.answer("Игра не активна")
+        return
+
+    game = mines_games[uid]
+    game["active"] = False
+    win_amt = int(game["bet"] * game["multiplier"])
+    user_balances[uid] = user_balances.get(uid, 0) + win_amt
+
+    await call.message.edit_text(
+        f"💰 {call.from_user.full_name}, вы забрали выигрыш!\n"
+        f"✅ +{format_amount(win_amt)} GRAM\n"
+        f"🧮 Итоговый множитель: x{game['multiplier']:.1f}\n\n"
+        f"{format_mines_field(game['field'], game['revealed'])}"
+    )
+    d
