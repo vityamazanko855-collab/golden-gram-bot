@@ -445,7 +445,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (МАКСИМАЛЬНО ПРОСТО И НАДЁЖНО) ==========
+# ========== КНОПКИ МИН (ИСПРАВЛЕНО) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -514,6 +514,16 @@ async def mine_cash(call: CallbackQuery):
     
     # НАЧИСЛЯЕМ
     user_balances[uid] = user_balances.get(uid, 0) + win
+    
+    # Обновляем статистику
+    if uid not in user_stats:
+        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+    user_stats[uid]["played"] += 1
+    user_stats[uid]["won"] += 1
+    user_stats[uid]["total_bet"] += g["bet"]
+    user_stats[uid]["total_win"] += win
+    user_levels[uid] = user_levels.get(uid, 0) + 1
+    
     del mines_games[uid]
 
     await call.message.edit_text(
