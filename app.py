@@ -25,7 +25,7 @@ ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
-MAX_BETS_PER_MESSAGE = 500  # Увеличено до 500
+MAX_BETS_PER_MESSAGE = 500
 MAX_MESSAGE_LENGTH = 4000
 
 pending_bets = []
@@ -37,7 +37,6 @@ game_start_time = 0
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
 
-# ========== ОТПРАВКА ДЛИННЫХ СООБЩЕНИЙ ==========
 async def send_long_message(chat_id: int, text: str, parse_mode: str = "HTML"):
     if len(text) <= MAX_MESSAGE_LENGTH:
         await bot.send_message(chat_id, text, parse_mode=parse_mode)
@@ -68,32 +67,40 @@ def spin_roulette():
     return number, color_emoji
 
 def check_win(bet_type: str, number: int) -> bool:
-    bet = bet_type.lower()
+    bet = bet_type.lower().strip()
     if bet.isdigit():
         return int(bet) == number
     if "-" in bet:
-        parts = bet.split("-")
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            start, end = int(parts[0]), int(parts[1])
-            return start <= number <= end
+        try:
+            parts = bet.split("-")
+            if len(parts) == 2:
+                start = int(parts[0].strip())
+                end = int(parts[1].strip())
+                return start <= number <= end
+        except:
+            pass
     return False
 
 def get_multiplier(bet_type: str) -> int:
-    bet = bet_type.lower()
+    bet = bet_type.lower().strip()
     if bet.isdigit() or bet == "0":
         return 36
     if "-" in bet:
-        parts = bet.split("-")
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            start, end = int(parts[0]), int(parts[1])
-            count = end - start + 1
-            if count == 2: return 18
-            elif count == 3: return 12
-            elif count == 4: return 9
-            elif count == 6: return 6
-            elif count == 12: return 3
-            else: return 36 // count if count > 0 else 2
-        return 2
+        try:
+            parts = bet.split("-")
+            if len(parts) == 2:
+                start = int(parts[0].strip())
+                end = int(parts[1].strip())
+                count = abs(end - start) + 1
+                if count == 2: return 18
+                elif count == 3: return 12
+                elif count == 4: return 9
+                elif count == 6: return 6
+                elif count == 12: return 3
+                elif count == 18: return 2
+                else: return 36 // count if count > 0 else 2
+        except:
+            pass
     return 2
 
 def get_level(exp: int) -> int:
@@ -103,7 +110,6 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
-# ========== ПРОВЕРКА И СБРОС ЗАВИСШЕЙ ИГРЫ ==========
 def check_and_reset_stuck_game():
     global game_in_progress, pending_bets, last_game_time
     if game_in_progress:
@@ -114,7 +120,7 @@ def check_and_reset_stuck_game():
             return True
     return False
 
-# ========== АДМИН: ВЫДАЧА GRAM ==========
+# ========== АДМИН ==========
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -132,7 +138,6 @@ async def add_grams_slash(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM\n💰 Баланс: {format_amount(user_balances[ADMIN_ID])} GRAM")
 
-# ========== СБРОС ЗАВИСШЕЙ ИГРЫ (ДЛЯ АДМИНА) ==========
 @dp.message(Command("reset_game"))
 async def reset_game_slash(message: Message):
     global game_in_progress, pending_bets, last_game_time
@@ -302,7 +307,7 @@ async def handle_message(message: Message):
     if text.lower() in ["помощь", "команды", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "Ставки: 100 15 17 0 22-24\n"
+            "Ставки: 100 15 17 0 22-24 30-33\n"
             "Команды: б, топ, бонус, го, профиль, отмена, дать</code>",
             parse_mode="HTML"
         )
@@ -351,26 +356,31 @@ async def handle_message(message: Message):
                 amount = bet["amount"]
                 raw_bet = bet["raw_bet"]
 
-                if check_win(raw_bet, win_num):
-                    multiplier = get_multiplier(raw_bet)
-                    winnings = amount * multiplier
-                    user_balances[uid] = user_balances.get(uid, 0) + winnings
-                    
-                    if uid not in user_stats:
-                        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-                    user_stats[uid]["played"] += 1
-                    user_stats[uid]["won"] += 1
-                    user_stats[uid]["total_bet"] += amount
-                    user_stats[uid]["total_win"] += winnings
-                    user_levels[uid] = user_levels.get(uid, 0) + 1
-                    
-                    win_results.append(f"{uname} ставка {format_amount(amount)} GRAM выиграл {format_amount(winnings)} на {raw_bet}")
-                else:
-                    if uid not in user_stats:
-                        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-                    user_stats[uid]["played"] += 1
-                    user_stats[uid]["total_bet"] += amount
-                    user_levels[uid] = user_levels.get(uid, 0) + 1
+                try:
+                    if check_win(raw_bet, win_num):
+                        multiplier = get_multiplier(raw_bet)
+                        winnings = amount * multiplier
+                        user_balances[uid] = user_balances.get(uid, 0) + winnings
+                        
+                        if uid not in user_stats:
+                            user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+                        user_stats[uid]["played"] += 1
+                        user_stats[uid]["won"] += 1
+                        user_stats[uid]["total_bet"] += amount
+                        user_stats[uid]["total_win"] += winnings
+                        user_levels[uid] = user_levels.get(uid, 0) + 1
+                        
+                        win_results.append(f"{uname} ставка {format_amount(amount)} GRAM выиграл {format_amount(winnings)} на {raw_bet}")
+                    else:
+                        if uid not in user_stats:
+                            user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+                        user_stats[uid]["played"] += 1
+                        user_stats[uid]["total_bet"] += amount
+                        user_levels[uid] = user_levels.get(uid, 0) + 1
+                except Exception as e:
+                    logging.error(f"Ошибка при обработке ставки {raw_bet}: {e}")
+                    # Возвращаем деньги за проблемную ставку
+                    user_balances[uid] = user_balances.get(uid, 0) + amount
 
             final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
             final_message += "\n".join(all_bets_lines)
@@ -381,8 +391,8 @@ async def handle_message(message: Message):
             await send_long_message(message.chat.id, final_message)
 
         except Exception as e:
-            logging.error(f"Ошибка в игре: {e}")
-            await message.answer("❌ Произошла ошибка при обработке игры. Ставки возвращены.")
+            logging.error(f"Критическая ошибка в игре: {e}")
+            await message.answer("❌ Произошла критическая ошибка. Все ставки возвращены.")
             for bet in pending_bets:
                 uid = bet["user_id"]
                 amount = bet["amount"]
