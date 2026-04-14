@@ -27,6 +27,9 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
+# ГИФКА
+ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
+
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
@@ -280,8 +283,21 @@ async def handle(message: Message):
             return
 
         game_in_progress = True
-        await message.answer("<code>⏳ 10 секунд...</code>", parse_mode="HTML")
+
+        # ГИФКА
+        gif_msg = None
+        try:
+            gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим...")
+        except:
+            await message.answer("<code>⏳ 10 секунд...</code>", parse_mode="HTML")
+
         await asyncio.sleep(10)
+
+        if gif_msg:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
+            except:
+                pass
 
         try:
             win_num, win_emoji, win_color = spin_roulette()
