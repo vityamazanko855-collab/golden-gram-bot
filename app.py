@@ -172,12 +172,12 @@ async def handle(message: Message):
         field = generate_mines_field()
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
 
+        # Кнопка "Забрать" НЕ показывается при старте
         kb = InlineKeyboardBuilder()
         for i in range(5):
             for j in range(5):
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
-        kb.button(text="💰 Забрать выигрыш", callback_data="m_cash")
-        kb.adjust(5, 5, 5, 5, 5, 1)
+        kb.adjust(5, 5, 5, 5, 5)
 
         await message.answer(
             f"💎 {name}, вы начали игру минное поле!\n"
@@ -445,7 +445,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (ИСПРАВЛЕНО) ==========
+# ========== КНОПКИ МИН (КНОПКА "ЗАБРАТЬ" ПОЯВЛЯЕТСЯ ПОСЛЕ ПЕРВОЙ ЗВЕЗДЫ) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -458,7 +458,6 @@ async def mine_click(call: CallbackQuery):
     if not g["active"]:
         return
 
-    # Если это кнопка "Забрать выигрыш", то не обрабатываем здесь
     if call.data == "m_cash":
         return
 
@@ -490,8 +489,12 @@ async def mine_click(call: CallbackQuery):
                 kb.button(text=g["field"][i][j], callback_data="done")
             else:
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
-    kb.button(text="💰 Забрать выигрыш", callback_data="m_cash")
-    kb.adjust(5, 5, 5, 5, 5, 1)
+
+    # Кнопка "Забрать" появляется только после первого открытия
+    if g["revealed"]:
+        kb.button(text="💰 Забрать выигрыш", callback_data="m_cash")
+
+    kb.adjust(5, 5, 5, 5, 5, 1) if g["revealed"] else kb.adjust(5, 5, 5, 5, 5)
 
     await call.message.edit_text(
         f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n"
@@ -516,10 +519,8 @@ async def mine_cash(call: CallbackQuery):
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
 
-    # НАЧИСЛЯЕМ
     user_balances[uid] = user_balances.get(uid, 0) + win
 
-    # Обновляем статистику
     if uid not in user_stats:
         user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
     user_stats[uid]["played"] += 1
