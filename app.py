@@ -30,7 +30,7 @@ MAX_BETS_PER_MESSAGE = 500
 MAX_LINES_PER_MESSAGE = 20
 MAX_RESULT_LINES = 50
 
-# Твоя гифка с Google Диска
+# Гифка рулетки
 ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
 
 pending_bets = []
@@ -56,18 +56,36 @@ def spin_roulette():
     number = random.randint(0, 36)
     if number == 0:
         color_emoji = "🟢"
+        color_name = "ЗЕЛЁНОЕ"
     elif number in [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]:
         color_emoji = "🔴"
+        color_name = "КРАСНОЕ"
     else:
         color_emoji = "⚫"
-    return number, color_emoji
+        color_name = "ЧЁРНОЕ"
+    return number, color_emoji, color_name
 
-def check_win(bet_type: str, number: int) -> bool:
-    bet = bet_type.lower().strip()
-    if not bet:
-        return False
+def normalize_bet_type(bet: str) -> str:
+    bet = bet.lower().strip()
+    if bet in ["к", "красное", "красный", "red", "🔴"]: return "красное"
+    if bet in ["ч", "чёрное", "черное", "чёрный", "черный", "black", "⚫"]: return "чёрное"
+    if bet in ["чёт", "чет", "чётное", "четное", "even"]: return "чётное"
+    if bet in ["неч", "нечётное", "нечетное", "odd"]: return "нечётное"
+    if bet in ["0", "зеро", "zero", "🟢"]: return "0"
+    return bet
+
+def check_win(bet_type: str, number: int, color_name: str) -> bool:
+    bet = normalize_bet_type(bet_type)
+
+    if bet == "красное" and color_name == "КРАСНОЕ": return True
+    if bet == "чёрное" and color_name == "ЧЁРНОЕ": return True
+    if bet == "чётное" and number != 0 and number % 2 == 0: return True
+    if bet == "нечётное" and number % 2 == 1: return True
+    if bet == "0" and number == 0: return True
+
     if bet.isdigit():
         return int(bet) == number
+
     if "-" in bet:
         try:
             parts = bet.split("-")
@@ -82,11 +100,13 @@ def check_win(bet_type: str, number: int) -> bool:
     return False
 
 def get_multiplier(bet_type: str) -> int:
-    bet = bet_type.lower().strip()
-    if not bet:
-        return 1
-    if bet.isdigit() or bet == "0":
+    bet = normalize_bet_type(bet_type)
+
+    if bet in ["красное", "чёрное", "чётное", "нечётное"]:
+        return 2
+    if bet == "0" or bet.isdigit():
         return 36
+
     if "-" in bet:
         try:
             parts = bet.split("-")
@@ -326,7 +346,7 @@ async def handle_message(message: Message):
     if text.lower() in ["помощь", "команды", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "Ставки: 100 15 17 0 22-24 30-33\n"
+            "Ставки: 100 15 17 0 22-24 30-33 чёрное красное\n"
             "Команды: б, лог, топ, бонус, го, профиль, отмена, дать</code>",
             parse_mode="HTML"
         )
@@ -354,7 +374,7 @@ async def handle_message(message: Message):
         game_in_progress = True
         game_start_time = time.time()
 
-        # Пытаемся отправить гифку с Google Диска
+        # Пытаемся отправить гифку
         gif_msg = None
         try:
             gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим рулетку...")
@@ -372,7 +392,7 @@ async def handle_message(message: Message):
                 pass
 
         try:
-            win_num, win_emoji = spin_roulette()
+            win_num, win_emoji, win_color = spin_roulette()
 
             game_history.append(f"{win_emoji} {win_num}")
             if len(game_history) > 10:
@@ -396,7 +416,7 @@ async def handle_message(message: Message):
                     continue
 
                 try:
-                    if check_win(raw_bet, win_num):
+                    if check_win(raw_bet, win_num, win_color):
                         multiplier = get_multiplier(raw_bet)
                         winnings = amount * multiplier
                         user_balances[uid] = user_balances.get(uid, 0) + winnings
