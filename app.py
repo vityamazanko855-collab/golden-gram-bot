@@ -557,4 +557,4 @@ async def mine_cash(call: CallbackQuery):
 
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 
+    user_balances[uid] = user_balances.get(uid, 0) + win 
