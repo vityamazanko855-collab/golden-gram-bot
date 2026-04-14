@@ -26,7 +26,7 @@ ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
-MAX_BETS_PER_MESSAGE = 200  # Увеличено до 200
+MAX_BETS_PER_MESSAGE = 200
 
 pending_bets = []
 game_in_progress = False
@@ -172,29 +172,22 @@ async def handle_message(message: Message):
 
     user_id = message.from_user.id
     user_name = message.from_user.full_name
-    text = message.text.strip().lower()
+    text = message.text.strip()
     parts = text.split()
 
-    # ========== ОТМЕНА СТАВОК ==========
-    if text in ["отмена", "отменить", "/отмена", "/cancel"]:
+    # ========== ОТМЕНА ==========
+    if text.lower() in ["отмена", "отменить", "/отмена", "/cancel"]:
         if game_in_progress:
             await message.reply("⏳ Нельзя отменить ставки во время игры!")
             return
 
-        # Находим ставки этого игрока
         user_bets = [bet for bet in pending_bets if bet["user_id"] == user_id]
         if not user_bets:
             await message.reply("❌ У вас нет активных ставок.")
             return
 
-        # Считаем общую сумму возврата
         total_refund = sum(bet["amount"] for bet in user_bets)
-
-        # Удаляем ставки игрока из очереди
-        global pending_bets
         pending_bets = [bet for bet in pending_bets if bet["user_id"] != user_id]
-
-        # Возвращаем GRAM
         user_balances[user_id] = user_balances.get(user_id, 0) + total_refund
 
         await message.reply(
@@ -205,7 +198,7 @@ async def handle_message(message: Message):
         return
 
     # ========== ПРОФИЛЬ ==========
-    if text in ["профиль", "profile", "/profile"]:
+    if text.lower() in ["профиль", "profile", "/profile"]:
         balance = user_balances.get(user_id, 0)
         stats = user_stats.get(user_id, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
         exp = user_levels.get(user_id, 0)
@@ -227,7 +220,7 @@ async def handle_message(message: Message):
         return
 
     # ========== БОНУС ==========
-    if text in ["бонус", "daily"]:
+    if text.lower() in ["бонус", "daily"]:
         now = int(time.time())
         ds = daily_streak.get(user_id, {"last_claim": 0, "streak": 0})
         last_claim = ds["last_claim"]
@@ -254,18 +247,18 @@ async def handle_message(message: Message):
         return
 
     # ========== БАЛАНС ==========
-    if text in ["б", "баланс", "грамм"]:
+    if text.lower() in ["б", "баланс", "грамм"]:
         balance = user_balances.get(user_id, 0)
         await message.reply(format_balance(user_name, balance))
         return
 
     # ========== ЛОГ ==========
-    if text in ["лог", "история"]:
+    if text.lower() in ["лог", "история"]:
         await message.reply(format_log())
         return
 
     # ========== ТОП ==========
-    if text in ["топ", "/топ"]:
+    if text.lower() in ["топ", "/топ"]:
         if not user_balances:
             await message.reply("📊 Пока никто не играл.")
             return
@@ -282,7 +275,7 @@ async def handle_message(message: Message):
         return
 
     # ========== ДАТЬ ==========
-    if text.startswith("дать ") or text.startswith("/дать "):
+    if text.lower().startswith("дать ") or text.lower().startswith("/дать "):
         cmd_parts = text.split()
         if len(cmd_parts) == 3 and cmd_parts[1].startswith("@"):
             target_username = cmd_parts[1][1:]
@@ -336,7 +329,7 @@ async def handle_message(message: Message):
             return
 
     # ========== ПОМОЩЬ ==========
-    if text in ["помощь", "команды", "help", "старт", "/start"]:
+    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             f"🎰 GOLDEN GRAM ROULETTE\n\n"
             f"Ставки: 100 к, 200 ч, 500 чёт, 1000 23-34\n"
@@ -345,7 +338,7 @@ async def handle_message(message: Message):
         return
 
     # ========== ГО ==========
-    if text == "го":
+    if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
             await message.reply("⏳ Дождитесь окончания!")
