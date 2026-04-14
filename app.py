@@ -26,7 +26,8 @@ GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
-MAX_MESSAGE_LENGTH = 4000
+MAX_LINES_PER_MESSAGE = 20  # Разбивка подтверждений по 20 строк
+MAX_RESULT_LINES = 50      # Разбивка результатов по 50 строк
 
 pending_bets = []
 game_in_progress = False
@@ -37,25 +38,17 @@ game_start_time = 0
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
 
-async def send_long_message(chat_id: int, text: str, parse_mode: str = "HTML"):
-    if len(text) <= MAX_MESSAGE_LENGTH:
-        await bot.send_message(chat_id, text, parse_mode=parse_mode)
-    else:
-        parts = []
-        current = ""
-        for line in text.split("\n"):
-            if len(current) + len(line) + 1 > MAX_MESSAGE_LENGTH:
-                parts.append(current)
-                current = line
-            else:
-                current += "\n" + line if current else line
-        if current:
-            parts.append(current)
-        for part in parts:
-            await bot.send_message(chat_id, part, parse_mode=parse_mode)
-            await asyncio.sleep(0.5)
+async def send_in_chunks(chat_id: int, lines: list, prefix: str = "", parse_mode: str = "HTML", chunk_size: int = 20):
+    """Отправляет список строк порциями по chunk_size штук"""
+    for i in range(0, len(lines), chunk_size):
+        chunk = lines[i:i + chunk_size]
+        text = prefix + "\n".join(chunk)
+        if parse_mode == "HTML":
+            text = f"<code>{text}</code>"
+        await bot.send_message(chat_id, text, parse_mode=parse_mode if parse_mode == "HTML" else None)
+        await asyncio.sleep(0.2)
 
-# ========== РУЛЕТКА (ПОЛНОСТЬЮ ИСПРАВЛЕНО) ==========
+# ========== РУЛЕТКА ==========
 def spin_roulette():
     number = random.randint(0, 36)
     if number == 0:
@@ -171,7 +164,7 @@ async def handle_message(message: Message):
     parts = text.split()
 
     if check_and_reset_stuck_game():
-        await message.answer("⚠️ Предыдущая игра была принудительно завершена из-за зависания. Можете делать новые ставки.")
+        await message.answer("⚠️ Предыдущая игра была сброшена. Можете делать ставки.")
 
     # ========== ОТМЕНА ==========
     if text.lower() in ["отмена", "отменить"]:
@@ -201,8 +194,7 @@ async def handle_message(message: Message):
         level = get_level(exp)
         winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
         profit = stats["total_win"] - stats["total_bet"]
-        await send_long_message(
-            message.chat.id,
+        await message.reply(
             f"<code>👤 {user_name}\n"
             f"🆔 {user_id}\n"
             f"📊 Уровень: {level}\n"
@@ -210,7 +202,8 @@ async def handle_message(message: Message):
             f"🎲 Игр: {stats['played']}\n"
             f"🏆 Побед: {stats['won']}\n"
             f"📈 Винрейт: {winrate:.1f}%\n"
-            f"📊 Профит: {format_amount(profit)} GRAM</code>"
+            f"📊 Профит: {format_amount(profit)} GRAM</code>",
+            parse_mode="HTML"
         )
         return
 
@@ -248,16 +241,15 @@ async def handle_message(message: Message):
             await message.reply("📊 Пока никто не играл.")
             return
         sorted_users = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)
-        top_text = "<code>🏆 ТОП-10 БОГАЧЕЙ:\n\n"
+        top_lines = ["🏆 ТОП-10 БОГАЧЕЙ:", ""]
         for i, (uid, bal) in enumerate(sorted_users[:10], 1):
             try:
                 user_info = await bot.get_chat(uid)
                 name = user_info.full_name
             except:
                 name = f"ID: {uid}"
-            top_text += f"{i}. {name} — {format_amount(bal)} GRAM\n"
-        top_text += "</code>"
-        await send_long_message(message.chat.id, top_text)
+            top_lines.append(f"{i}. {name} — {format_amount(bal)} GRAM")
+        await send_in_chunks(message.chat.id, top_lines, chunk_size=15)
         return
 
     # ========== ДАТЬ ==========
@@ -353,6 +345,7 @@ async def handle_message(message: Message):
         try:
             win_num, win_emoji = spin_roulette()
 
+            # Список всех ставок
             all_bets_lines = []
             for bet in pending_bets:
                 uname = bet["user_name"]
@@ -360,6 +353,7 @@ async def handle_message(message: Message):
                 raw_bet = bet["raw_bet"]
                 all_bets_lines.append(f"{uname} {format_amount(amount)} GRAM на {raw_bet}")
 
+            # Список выигрышей
             win_results = []
             for bet in pending_bets:
                 uid = bet["user_id"]
@@ -367,7 +361,6 @@ async def handle_message(message: Message):
                 amount = bet["amount"]
                 raw_bet = bet["raw_bet"]
 
-                # Защита от пустых ставок
                 if not raw_bet:
                     continue
 
@@ -396,13 +389,16 @@ async def handle_message(message: Message):
                     logging.error(f"Ошибка в ставке {raw_bet}: {e}")
                     user_balances[uid] = user_balances.get(uid, 0) + amount
 
-            final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
-            final_message += "\n".join(all_bets_lines)
+            # Отправляем заголовок
+            await message.answer(f"<code>Рулетка: {win_num} {win_emoji}</code>", parse_mode="HTML")
+            
+            # Отправляем все ставки порциями
+            if all_bets_lines:
+                await send_in_chunks(message.chat.id, all_bets_lines, chunk_size=MAX_RESULT_LINES)
+            
+            # Отправляем выигрыши порциями
             if win_results:
-                final_message += "\n\n" + "\n".join(win_results)
-            final_message += "</code>"
-
-            await send_long_message(message.chat.id, final_message)
+                await send_in_chunks(message.chat.id, win_results, chunk_size=MAX_RESULT_LINES)
 
         except Exception as e:
             logging.error(f"Критическая ошибка в игре: {e}")
@@ -463,7 +459,7 @@ async def handle_message(message: Message):
             accepted_lines.append(f"Ставка принята: {user_name} {format_amount(amount)} GRAM на {bet}")
 
         if accepted_lines:
-            await send_long_message(message.chat.id, "<code>" + "\n".join(accepted_lines) + "</code>")
+            await send_in_chunks(message.chat.id, accepted_lines, chunk_size=MAX_LINES_PER_MESSAGE)
 
 # ========== ЗАПУСК ==========
 async def main():
