@@ -55,7 +55,7 @@ async def send_long_message(chat_id: int, text: str, parse_mode: str = "HTML"):
             await bot.send_message(chat_id, part, parse_mode=parse_mode)
             await asyncio.sleep(0.5)
 
-# ========== РУЛЕТКА ==========
+# ========== РУЛЕТКА (ПОЛНОСТЬЮ ИСПРАВЛЕНО) ==========
 def spin_roulette():
     number = random.randint(0, 36)
     if number == 0:
@@ -68,6 +68,8 @@ def spin_roulette():
 
 def check_win(bet_type: str, number: int) -> bool:
     bet = bet_type.lower().strip()
+    if not bet:
+        return False
     if bet.isdigit():
         return int(bet) == number
     if "-" in bet:
@@ -76,13 +78,17 @@ def check_win(bet_type: str, number: int) -> bool:
             if len(parts) == 2:
                 start = int(parts[0].strip())
                 end = int(parts[1].strip())
+                if start > end:
+                    start, end = end, start
                 return start <= number <= end
         except:
-            pass
+            return False
     return False
 
 def get_multiplier(bet_type: str) -> int:
     bet = bet_type.lower().strip()
+    if not bet:
+        return 1
     if bet.isdigit() or bet == "0":
         return 36
     if "-" in bet:
@@ -91,16 +97,21 @@ def get_multiplier(bet_type: str) -> int:
             if len(parts) == 2:
                 start = int(parts[0].strip())
                 end = int(parts[1].strip())
-                count = abs(end - start) + 1
+                if start > end:
+                    start, end = end, start
+                count = end - start + 1
+                if count <= 0:
+                    return 1
                 if count == 2: return 18
                 elif count == 3: return 12
                 elif count == 4: return 9
                 elif count == 6: return 6
+                elif count == 8: return 4
                 elif count == 12: return 3
                 elif count == 18: return 2
-                else: return 36 // count if count > 0 else 2
+                else: return 36 // count
         except:
-            pass
+            return 2
     return 2
 
 def get_level(exp: int) -> int:
@@ -155,7 +166,7 @@ async def handle_message(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_start_time
 
     user_id = message.from_user.id
-    user_name = message.from_user.full_name
+    user_name = message.from_user.full_name or "Игрок"
     text = message.text.strip()
     parts = text.split()
 
@@ -356,6 +367,10 @@ async def handle_message(message: Message):
                 amount = bet["amount"]
                 raw_bet = bet["raw_bet"]
 
+                # Защита от пустых ставок
+                if not raw_bet:
+                    continue
+
                 try:
                     if check_win(raw_bet, win_num):
                         multiplier = get_multiplier(raw_bet)
@@ -378,8 +393,7 @@ async def handle_message(message: Message):
                         user_stats[uid]["total_bet"] += amount
                         user_levels[uid] = user_levels.get(uid, 0) + 1
                 except Exception as e:
-                    logging.error(f"Ошибка при обработке ставки {raw_bet}: {e}")
-                    # Возвращаем деньги за проблемную ставку
+                    logging.error(f"Ошибка в ставке {raw_bet}: {e}")
                     user_balances[uid] = user_balances.get(uid, 0) + amount
 
             final_message = f"<code>Рулетка: {win_num} {win_emoji}\n\n"
@@ -438,6 +452,8 @@ async def handle_message(message: Message):
 
         accepted_lines = []
         for bet in bet_items:
+            if not bet:
+                continue
             pending_bets.append({
                 "user_id": user_id,
                 "user_name": user_name,
@@ -446,7 +462,8 @@ async def handle_message(message: Message):
             })
             accepted_lines.append(f"Ставка принята: {user_name} {format_amount(amount)} GRAM на {bet}")
 
-        await send_long_message(message.chat.id, "<code>" + "\n".join(accepted_lines) + "</code>")
+        if accepted_lines:
+            await send_long_message(message.chat.id, "<code>" + "\n".join(accepted_lines) + "</code>")
 
 # ========== ЗАПУСК ==========
 async def main():
