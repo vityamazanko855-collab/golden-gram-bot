@@ -15,6 +15,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# Данные
 user_balances = {}
 user_stats = {}
 user_levels = {}
@@ -163,6 +164,7 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
+# Админ
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -180,6 +182,7 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
+# Главный обработчик
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -189,6 +192,7 @@ async def handle(message: Message):
     text = message.text.strip()
     parts = text.split()
 
+    # Мины
     if text.lower().startswith("мины "):
         try:
             bet = int(parts[1])
@@ -221,6 +225,7 @@ async def handle(message: Message):
         )
         return
 
+    # Отмена
     if text.lower() in ["отмена", "отменить"]:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -235,6 +240,7 @@ async def handle(message: Message):
         await message.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
         return
 
+    # Профиль
     if text.lower() in ["профиль", "profile"]:
         bal = user_balances.get(uid, 0)
         stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
@@ -249,6 +255,7 @@ async def handle(message: Message):
         )
         return
 
+    # Бонус
     if text.lower() == "бонус":
         now = int(time.time())
         ds = daily_streak.get(uid, {"last": 0, "streak": 0})
@@ -267,11 +274,13 @@ async def handle(message: Message):
             await message.reply(f"<code>⏰ Через {h} ч {m} мин</code>", parse_mode="HTML")
         return
 
+    # Баланс
     if text.lower() in ["б", "баланс"]:
         bal = user_balances.get(uid, 0)
         await message.reply(f"<code>{name}\nБаланс: {format_amount(bal)} GRAM</code>", parse_mode="HTML")
         return
 
+    # Лог
     if text.lower() in ["лог", "история"]:
         if not game_history:
             await message.reply("📋 Пусто")
@@ -282,6 +291,7 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
+    # Топ
     if text.lower() == "топ":
         if not user_balances:
             await message.reply("📊 Пусто")
@@ -298,6 +308,7 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
+    # Дать
     if text.lower().startswith("дать "):
         p = text.split()
         if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
@@ -347,6 +358,7 @@ async def handle(message: Message):
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
         return
 
+    # Помощь
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
@@ -359,6 +371,7 @@ async def handle(message: Message):
         )
         return
 
+    # ГО
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
@@ -434,6 +447,7 @@ async def handle(message: Message):
             last_game_time = int(time.time())
         return
 
+    # Ставка
     if len(parts) >= 2:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -474,6 +488,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
+# Кнопки мин
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -542,9 +557,4 @@ async def mine_cash(call: CallbackQuery):
 
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win
-
-    if uid not in user_stats:
-        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-    user_stats[uid]["played"] += 1
-    user_stats[uid]["won"]
+    user_balances[uid] = user_balances.get(uid, 
