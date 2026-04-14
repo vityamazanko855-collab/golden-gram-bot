@@ -20,7 +20,7 @@ user_balances = {}
 user_stats = {}
 user_levels = {}
 daily_streak = {}
-game_history = []  # История выпадений
+game_history = []
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
@@ -29,6 +29,9 @@ DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 MAX_LINES_PER_MESSAGE = 20
 MAX_RESULT_LINES = 50
+
+# Гифка для рулетки
+ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
 
 pending_bets = []
 game_in_progress = False
@@ -40,7 +43,6 @@ def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
 
 async def send_in_chunks(chat_id: int, lines: list, parse_mode: str = "HTML", chunk_size: int = 20):
-    """Отправляет список строк порциями по chunk_size штук"""
     for i in range(0, len(lines), chunk_size):
         chunk = lines[i:i + chunk_size]
         text = "\n".join(chunk)
@@ -352,9 +354,16 @@ async def handle_message(message: Message):
         game_in_progress = True
         game_start_time = time.time()
         
-        wait_msg = await message.answer("<code>⏳ Подождите 10 секунд...</code>", parse_mode="HTML")
+        # Отправляем гифку с рулеткой
+        gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим рулетку...")
+        
         await asyncio.sleep(10)
-        await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
+        
+        # Удаляем гифку
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
+        except Exception:
+            pass
 
         try:
             win_num, win_emoji = spin_roulette()
