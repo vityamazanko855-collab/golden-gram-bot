@@ -342,14 +342,49 @@ async def handle_message(message: Message):
             await message.reply(f"<code>✅ {format_amount(amount)} GRAM → {target_name}</code>", parse_mode="HTML")
             return
 
-    # ========== ПОМОЩЬ ==========
-    if text.lower() in ["помощь", "команды", "старт", "/start"]:
-        await message.reply(
-            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "Ставки: 100 15 17 0 22-24 30-33 чёрное красное\n"
-            "Команды: б, лог, топ, бонус, го, профиль, отмена, дать</code>",
-            parse_mode="HTML"
+    # ========== ПОМОЩЬ (НОВЫЙ СТИЛЬ) ==========
+    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
+        help_text = (
+            "<code>🎰 GOLDEN GRAM ROULETTE 🎰\n\n"
+            "┌─────────────────────────┐\n"
+            "│  🎲 СТАВКИ               │\n"
+            "├─────────────────────────┤\n"
+            "│ • 100 чёрное             │\n"
+            "│ • 250 красное            │\n"
+            "│ • 500 чётное             │\n"
+            "│ • 1000 14                │\n"
+            "│ • 2000 0                 │\n"
+            "│ • 5000 1-12              │\n"
+            "│ • 10000 23-34            │\n"
+            "│ Можно перечислять        │\n"
+            "│ через пробел:            │\n"
+            "│ 1000 14 23-34 к 0        │\n"
+            "└─────────────────────────┘\n\n"
+            "┌─────────────────────────┐\n"
+            "│  🕹️ КОМАНДЫ              │\n"
+            "├─────────────────────────┤\n"
+            "│ б, баланс — баланс       │\n"
+            "│ лог — история чисел      │\n"
+            "│ топ — рейтинг богачей    │\n"
+            "│ профиль — статистика     │\n"
+            "│ бонус — ежед. награда    │\n"
+            "│ го — запуск рулетки      │\n"
+            "│ отмена — отмена ставок   │\n"
+            "│ дать @user 1000 — перевод│\n"
+            "└─────────────────────────┘\n\n"
+            "┌─────────────────────────┐\n"
+            "│  📊 МНОЖИТЕЛИ            │\n"
+            "├─────────────────────────┤\n"
+            "│ Число (0-36): x36        │\n"
+            "│ Красное/Чёрное: x2       │\n"
+            "│ Чётное/Нечётное: x2      │\n"
+            "│ Дюжина (1-12): x3        │\n"
+            "│ Диапазон: по расчёту     │\n"
+            "└─────────────────────────┘\n\n"
+            "🔥 Максимум 500 ставок за раз\n"
+            "⏱️ Кулдаун 15 сек между игр</code>"
         )
+        await message.reply(help_text, parse_mode="HTML")
         return
 
     # ========== ГО ==========
@@ -489,29 +524,4 @@ async def handle_message(message: Message):
         balance = user_balances.get(user_id, 0)
 
         if total_needed > balance:
-            await message.reply(f"❌ Недостаточно GRAM (нужно {format_amount(total_needed)})")
-            return
-
-        user_balances[user_id] = balance - total_needed
-
-        accepted_lines = []
-        for bet in bet_items:
-            if not bet:
-                continue
-            pending_bets.append({
-                "user_id": user_id,
-                "user_name": user_name,
-                "amount": amount,
-                "raw_bet": bet
-            })
-            accepted_lines.append(f"Ставка принята: {user_name} {format_amount(amount)} GRAM на {bet}")
-
-        if accepted_lines:
-            await send_in_chunks(message.chat.id, accepted_lines, chunk_size=MAX_LINES_PER_MESSAGE)
-
-# ========== ЗАПУСК ==========
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            await 
