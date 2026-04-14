@@ -111,7 +111,6 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
-# ========== МИННОЕ ПОЛЕ ==========
 def generate_mines_field():
     field = [["⭐" for _ in range(5)] for _ in range(5)]
     mines = random.sample(range(25), 3)
@@ -126,10 +125,10 @@ def format_mines_field(field, revealed):
         row = ""
         for j in range(5):
             if (i, j) in revealed:
-                row += field[i][j] + " "
+                row += field[i][j]
             else:
-                row += "❓ "
-        lines.append(row.strip())
+                row += "❓"
+        lines.append(row)
     return "\n".join(lines)
 
 # ========== АДМИН ==========
@@ -160,40 +159,33 @@ async def handle(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # ========== МИННОЕ ПОЛЕ ==========
+    # ========== МИНЫ ==========
     if text.lower().startswith("мины "):
         try:
             bet = int(parts[1])
         except:
-            await message.reply("❌ Ставка числом. Пример: мины 100")
+            await message.reply("❌ Пример: мины 100")
             return
         if bet <= 0:
             await message.reply("❌ Ставка > 0")
             return
         bal = user_balances.get(uid, 0)
         if bet > bal:
-            await message.reply(f"❌ Недостаточно GRAM. Баланс: {format_amount(bal)}")
+            await message.reply(f"❌ Недостаточно GRAM")
             return
         user_balances[uid] = bal - bet
         field = generate_mines_field()
-        mines_games[uid] = {
-            "bet": bet,
-            "field": field,
-            "revealed": [],
-            "multiplier": 1.0,
-            "active": True
-        }
+        mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
         kb = InlineKeyboardBuilder()
         for i in range(5):
-            row_btns = []
             for j in range(5):
-                row_btns.append(types.InlineKeyboardButton(text="❓", callback_data=f"mine_{i}_{j}"))
-            kb.row(*row_btns)
-        kb.row(types.InlineKeyboardButton(text="💰 Забрать", callback_data="mine_cashout"))
+                kb.button(text="❓", callback_data=f"m_{i}_{j}")
+        kb.button(text="💰 Забрать", callback_data="m_cash")
+        kb.adjust(5)
         await message.answer(
-            f"💎 {name}, вы начали игру минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
+            f"💎 {name}, минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
             f"{format_mines_field(field, [])}\n\n"
-            f"Текущий множитель: x1.0\nПотенциальный выигрыш: {format_amount(bet)} GRAM",
+            f"Множитель: x1.0 | Выигрыш: {format_amount(bet)} GRAM",
             reply_markup=kb.as_markup()
         )
         return
@@ -284,7 +276,7 @@ async def handle(message: Message):
     # ========== ДАТЬ ==========
     if text.lower().startswith("дать "):
         p = text.split()
-        # Дать всё (по ответу)
+        # Дать всё
         if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
             t = message.reply_to_message.from_user
             if t.id == uid:
@@ -292,13 +284,13 @@ async def handle(message: Message):
                 return
             amt = user_balances.get(uid, 0)
             if amt <= 0:
-                await message.reply("❌ У вас 0 GRAM")
+                await message.reply("❌ 0 GRAM")
                 return
             user_balances[uid] = 0
             user_balances[t.id] = user_balances.get(t.id, 0) + amt
             await message.reply(f"✅ Все {format_amount(amt)} GRAM → {t.full_name}")
             return
-        # Дать сумму по @username
+        # Дать сумму по @
         elif len(p) == 3 and p[1].startswith("@"):
             try:
                 amt = int(p[2])
@@ -338,13 +330,12 @@ async def handle(message: Message):
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "🎲 СТАВКИ:\n100 чёрное\n250 красное\n500 чётное\n1000 14\n2000 0\n5000 1-12\n10000 23-34\n"
+            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
             "Много: 1000 14 23-34 к 0\n\n"
-            "💣 МИНЫ:\nмины 100 — начать игру\n\n"
-            "🕹️ КОМАНДЫ:\nб — баланс\nлог — история\nтоп — рейтинг\nпрофиль — статистика\n"
-            "бонус — ежед. награда\nго — запуск рулетки\nотмена — отмена ставок\n"
-            "дать @user 1000 — перевод\nдать всё (ответом) — отдать всё\n\n"
-            "📊 МНОЖИТЕЛИ:\nЧисло: x36\nКрасное/Чёрное: x2\nЧётное/Нечётное: x2\nДюжина: x3</code>", parse_mode="HTML"
+            "💣 МИНЫ: мины 100\n\n"
+            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+            "дать @user 1000 / дать всё (ответом)</code>",
+            parse_mode="HTML"
         )
         return
 
@@ -362,19 +353,17 @@ async def handle(message: Message):
             return
 
         game_in_progress = True
-        gif_msg = None
         try:
             gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим...")
         except:
-            await message.answer("<code>⏳ 10 секунд...</code>", parse_mode="HTML")
+            gif_msg = await message.answer("<code>⏳ 10 секунд...</code>", parse_mode="HTML")
 
         await asyncio.sleep(10)
 
-        if gif_msg:
-            try:
-                await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
-            except:
-                pass
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=gif_msg.message_id)
+        except:
+            pass
 
         try:
             win_num, win_emoji, win_color = spin_roulette()
@@ -382,12 +371,9 @@ async def handle(message: Message):
             if len(game_history) > 10:
                 game_history.pop(0)
 
-            all_bets = []
-            win_res = []
+            all_bets, win_res = [], []
             for b in pending_bets:
-                uname = b["user_name"]
-                amt = b["amount"]
-                raw = b["raw_bet"]
+                uname, amt, raw = b["user_name"], b["amount"], b["raw_bet"]
                 all_bets.append(f"{uname} {format_amount(amt)} GRAM на {raw}")
 
                 if check_win(raw, win_num, win_color):
@@ -418,7 +404,7 @@ async def handle(message: Message):
                 await message.answer("<code>" + "\n".join(win_res[i:i+50]) + "</code>", parse_mode="HTML")
 
         except Exception as e:
-            logging.error(f"Ошибка игры: {e}")
+            logging.error(f"Ошибка: {e}")
             await message.answer("❌ Ошибка. Ставки возвращены")
             for b in pending_bets:
                 user_balances[b["user_id"]] = user_balances.get(b["user_id"], 0) + b["amount"]
@@ -464,75 +450,78 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== ОБРАБОТЧИК КНОПОК МИН ==========
-@dp.callback_query(F.data.startswith("mine_"))
+# ========== КНОПКИ МИН ==========
+@dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     uid = call.from_user.id
     if uid not in mines_games or not mines_games[uid].get("active"):
         await call.answer("Игра не активна")
         return
 
-    game = mines_games[uid]
+    g = mines_games[uid]
     parts = call.data.split("_")
     row, col = int(parts[1]), int(parts[2])
 
-    if (row, col) in game["revealed"]:
+    if (row, col) in g["revealed"]:
         await call.answer("Уже открыто")
         return
 
-    game["revealed"].append((row, col))
-    cell = game["field"][row][col]
+    g["revealed"].append((row, col))
+    cell = g["field"][row][col]
 
     if cell == "💣":
-        game["active"] = False
+        g["active"] = False
         await call.message.edit_text(
-            f"💥 {call.from_user.full_name}, вы попали на мину!\n"
-            f"❌ Вы проиграли {format_amount(game['bet'])} GRAM.\n\n"
-            f"{format_mines_field(game['field'], game['revealed'])}"
+            f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
+            f"{format_mines_field(g['field'], g['revealed'])}"
         )
         del mines_games[uid]
-        await call.answer("Мина! Проигрыш.")
+        await call.answer("Мина!")
         return
 
-    game["multiplier"] += 0.4
-    potential = int(game["bet"] * game["multiplier"])
+    g["multiplier"] += 0.4
+    pot = int(g["bet"] * g["multiplier"])
 
     kb = InlineKeyboardBuilder()
     for i in range(5):
-        row_btns = []
         for j in range(5):
-            if (i, j) in game["revealed"]:
-                row_btns.append(types.InlineKeyboardButton(text=game["field"][i][j], callback_data="done"))
+            if (i, j) in g["revealed"]:
+                kb.button(text=g["field"][i][j], callback_data="done")
             else:
-                row_btns.append(types.InlineKeyboardButton(text="❓", callback_data=f"mine_{i}_{j}"))
-        kb.row(*row_btns)
-    kb.row(types.InlineKeyboardButton(text="💰 Забрать", callback_data="mine_cashout"))
+                kb.button(text="❓", callback_data=f"m_{i}_{j}")
+    kb.button(text="💰 Забрать", callback_data="m_cash")
+    kb.adjust(5)
 
     await call.message.edit_text(
-        f"💎 {call.from_user.full_name}, минное поле!\n☀️ Ставка: {format_amount(game['bet'])} GRAM\n\n"
-        f"{format_mines_field(game['field'], game['revealed'])}\n\n"
-        f"Текущий множитель: x{game['multiplier']:.1f}\n"
-        f"Потенциальный выигрыш: {format_amount(potential)} GRAM",
+        f"💎 {call.from_user.full_name}\n☀️ Ставка: {format_amount(g['bet'])} GRAM\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}\n\n"
+        f"Множитель: x{g['multiplier']:.1f} | Выигрыш: {format_amount(pot)} GRAM",
         reply_markup=kb.as_markup()
     )
-    await call.answer("⭐ Звезда!")
+    await call.answer("⭐")
 
-@dp.callback_query(F.data == "mine_cashout")
-async def mine_cashout(call: CallbackQuery):
+@dp.callback_query(F.data == "m_cash")
+async def mine_cash(call: CallbackQuery):
     uid = call.from_user.id
     if uid not in mines_games or not mines_games[uid].get("active"):
         await call.answer("Игра не активна")
         return
 
-    game = mines_games[uid]
-    game["active"] = False
-    win_amt = int(game["bet"] * game["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win_amt
+    g = mines_games[uid]
+    g["active"] = False
+    win = int(g["bet"] * g["multiplier"])
+    user_balances[uid] = user_balances.get(uid, 0) + win
 
     await call.message.edit_text(
-        f"💰 {call.from_user.full_name}, вы забрали выигрыш!\n"
-        f"✅ +{format_amount(win_amt)} GRAM\n"
-        f"🧮 Итоговый множитель: x{game['multiplier']:.1f}\n\n"
-        f"{format_mines_field(game['field'], game['revealed'])}"
+        f"💰 {call.from_user.full_name} забрал!\n✅ +{format_amount(win)} GRAM\n"
+        f"Множитель: x{g['multiplier']:.1f}\n\n{format_mines_field(g['field'], g['revealed'])}"
     )
-    d
+    del mines_games[uid]
+    await call.answer(f"+{format_amount(win)} GRAM")
+
+# ========== ЗАПУСК ==========
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
