@@ -418,47 +418,12 @@ async def handle(message: Message):
             await message.reply("❌ Ставка > 0")
             return
 
-        all_bets = " ".join(parts[1:]).split()
-
-        allowed_keywords = [
-            "к", "красное", "красный", "red", "🔴",
-            "ч", "чёрное", "черное", "чёрный", "черный", "black", "⚫",
-            "чёт", "чет", "чётное", "четное", "even",
-            "неч", "нечётное", "нечетное", "odd",
-            "0", "зеро", "zero", "🟢",
-            "1-12", "13-24", "25-36",
-            "1-я", "1я", "первая", "первый",
-            "2-я", "2я", "вторая", "второй",
-            "3-я", "3я", "третья", "третий"
-        ]
-
-        valid_bets = []
-        for b in all_bets:
-            b_lower = b.lower().strip()
-            if b_lower.isdigit() and 0 <= int(b_lower) <= 36:
-                valid_bets.append(b)
-            elif "-" in b_lower:
-                parts_range = b_lower.split("-")
-                if len(parts_range) == 2:
-                    try:
-                        start = int(parts_range[0].strip())
-                        end = int(parts_range[1].strip())
-                        if 0 <= start <= 36 and 0 <= end <= 36:
-                            valid_bets.append(b)
-                    except:
-                        pass
-            elif b_lower in allowed_keywords:
-                valid_bets.append(b)
-
-        if not valid_bets:
-            await message.reply("❌ Нет допустимых ставок. Примеры: красное, чёрное, чётное, 14, 1-12")
-            return
-
-        if len(valid_bets) > MAX_BETS_PER_MESSAGE:
+        bets = " ".join(parts[1:]).split()
+        if len(bets) > MAX_BETS_PER_MESSAGE:
             await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок")
             return
 
-        total = amt * len(valid_bets)
+        total = amt * len(bets)
         bal = user_balances.get(uid, 0)
         if total > bal:
             await message.reply(f"❌ Нужно {format_amount(total)} GRAM")
@@ -467,7 +432,7 @@ async def handle(message: Message):
         user_balances[uid] = bal - total
 
         acc = []
-        for b in valid_bets:
+        for b in bets:
             if not b: continue
             pending_bets.append({"user_id": uid, "user_name": name, "amount": amt, "raw_bet": b})
             acc.append(f"Ставка принята: {name} {format_amount(amt)} GRAM на {b}")
@@ -546,4 +511,24 @@ async def mine_cash(call: CallbackQuery):
     user_balances[uid] = user_balances.get(uid, 0) + win
 
     if uid not in user_stats:
-  
+        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+    user_stats[uid]["played"] += 1
+    user_stats[uid]["won"] += 1
+    user_stats[uid]["total_bet"] += g["bet"]
+    user_stats[uid]["total_win"] += win
+    user_levels[uid] = user_levels.get(uid, 0) + 1
+
+    del mines_games[uid]
+
+    await call.message.edit_text(
+        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
+        f"✅ +{format_amount(win)} GRAM\n"
+        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}"
+    )
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
