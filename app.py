@@ -111,10 +111,10 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
-# ========== МИННОЕ ПОЛЕ 5x3 ==========
+# ========== МИННОЕ ПОЛЕ 5x5 ==========
 def generate_mines_field():
-    field = [["⭐" for _ in range(5)] for _ in range(3)]
-    mines = random.sample(range(15), 3)
+    field = [["⭐" for _ in range(5)] for _ in range(5)]
+    mines = random.sample(range(25), 3)
     for m in mines:
         row, col = m // 5, m % 5
         field[row][col] = "💣"
@@ -122,13 +122,8 @@ def generate_mines_field():
 
 def format_mines_field(field, revealed):
     lines = []
-    for i in range(3):
-        row = ""
-        for j in range(5):
-            if (i, j) in revealed:
-                row += field[i][j]
-            else:
-                row += "❓"
+    for i in range(5):
+        row = " ".join(field[i][j] if (i, j) in revealed else "❓" for j in range(5))
         lines.append(row)
     return "\n".join(lines)
 
@@ -179,16 +174,17 @@ async def handle(message: Message):
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
 
         kb = InlineKeyboardBuilder()
-        for i in range(3):
+        for i in range(5):
             for j in range(5):
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
-        kb.button(text="💰 Забрать", callback_data="m_cash")
-        kb.adjust(5, 5, 5, 1)
+        kb.button(text="💰 Забрать выигрыш", callback_data="m_cash")
+        kb.adjust(5, 5, 5, 5, 5, 1)
 
         await message.answer(
-            f"💎 {name}, минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
-            f"{format_mines_field(field, [])}\n\n"
-            f"Множитель: x1.0 | Выигрыш: {format_amount(bet)} GRAM",
+            f"💎 {name}, вы начали игру минное поле!\n"
+            f"📌 Ставка: {format_amount(bet)} GRAM\n"
+            f"💲 Выигрыш: x1,0 | {format_amount(bet)} GRAM\n\n"
+            f"{format_mines_field(field, [])}",
             reply_markup=kb.as_markup()
         )
         return
@@ -450,7 +446,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (ПОЛЕ 5x3) ==========
+# ========== КНОПКИ МИН ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -482,24 +478,25 @@ async def mine_click(call: CallbackQuery):
         del mines_games[uid]
         return
 
-    g["multiplier"] += 0.4
+    g["multiplier"] += 0.14
     pot = int(g["bet"] * g["multiplier"])
 
     kb = InlineKeyboardBuilder()
-    for i in range(3):
+    for i in range(5):
         for j in range(5):
             if (i, j) in g["revealed"]:
                 kb.button(text=g["field"][i][j], callback_data="done")
             else:
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
-    kb.button(text="💰 Забрать", callback_data="m_cash")
-    kb.adjust(5, 5, 5, 1)
+    kb.button(text="💰 Забрать выигрыш", callback_data="m_cash")
+    kb.adjust(5, 5, 5, 5, 5, 1)
 
     try:
         await call.message.edit_text(
-            f"💎 {call.from_user.full_name}\n☀️ Ставка: {format_amount(g['bet'])} GRAM\n\n"
-            f"{format_mines_field(g['field'], g['revealed'])}\n\n"
-            f"Множитель: x{g['multiplier']:.1f} | Выигрыш: {format_amount(pot)} GRAM",
+            f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n"
+            f"📌 Ставка: {format_amount(g['bet'])} GRAM\n"
+            f"💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n"
+            f"{format_mines_field(g['field'], g['revealed'])}",
             reply_markup=kb.as_markup()
         )
     except:
@@ -521,8 +518,10 @@ async def mine_cash(call: CallbackQuery):
 
     try:
         await call.message.edit_text(
-            f"💰 {call.from_user.full_name} забрал!\n✅ +{format_amount(win)} GRAM\n"
-            f"Множитель: x{g['multiplier']:.1f}\n\n{format_mines_field(g['field'], g['revealed'])}"
+            f"💰 {call.from_user.full_name} забрал выигрыш!\n"
+            f"✅ +{format_amount(win)} GRAM\n"
+            f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+            f"{format_mines_field(g['field'], g['revealed'])}"
         )
     except:
         pass
