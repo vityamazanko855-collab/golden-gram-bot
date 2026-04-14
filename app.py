@@ -20,14 +20,15 @@ user_balances = {}
 user_stats = {}
 user_levels = {}
 daily_streak = {}
+game_history = []  # История выпадений
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
 DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
-MAX_LINES_PER_MESSAGE = 20  # Разбивка подтверждений по 20 строк
-MAX_RESULT_LINES = 50      # Разбивка результатов по 50 строк
+MAX_LINES_PER_MESSAGE = 20
+MAX_RESULT_LINES = 50
 
 pending_bets = []
 game_in_progress = False
@@ -38,11 +39,11 @@ game_start_time = 0
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
 
-async def send_in_chunks(chat_id: int, lines: list, prefix: str = "", parse_mode: str = "HTML", chunk_size: int = 20):
+async def send_in_chunks(chat_id: int, lines: list, parse_mode: str = "HTML", chunk_size: int = 20):
     """Отправляет список строк порциями по chunk_size штук"""
     for i in range(0, len(lines), chunk_size):
         chunk = lines[i:i + chunk_size]
-        text = prefix + "\n".join(chunk)
+        text = "\n".join(chunk)
         if parse_mode == "HTML":
             text = f"<code>{text}</code>"
         await bot.send_message(chat_id, text, parse_mode=parse_mode if parse_mode == "HTML" else None)
@@ -156,7 +157,7 @@ async def reset_game_slash(message: Message):
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
 async def handle_message(message: Message):
-    global pending_bets, game_in_progress, last_game_time, game_start_time
+    global pending_bets, game_in_progress, last_game_time, game_start_time, game_history
 
     user_id = message.from_user.id
     user_name = message.from_user.full_name or "Игрок"
@@ -235,6 +236,19 @@ async def handle_message(message: Message):
         await message.reply(f"<code>{user_name}\nБаланс: {format_amount(balance)} GRAM</code>", parse_mode="HTML")
         return
 
+    # ========== ЛОГ ==========
+    if text.lower() in ["лог", "история"]:
+        if not game_history:
+            await message.reply("📋 История пуста.")
+            return
+        row1 = " ".join(game_history[-10:][:5])
+        row2 = " ".join(game_history[-10:][5:]) if len(game_history[-10:]) > 5 else ""
+        if row2:
+            await message.reply(f"<code>{row1}\n{row2}</code>", parse_mode="HTML")
+        else:
+            await message.reply(f"<code>{row1}</code>", parse_mode="HTML")
+        return
+
     # ========== ТОП ==========
     if text.lower() == "топ":
         if not user_balances:
@@ -311,7 +325,7 @@ async def handle_message(message: Message):
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
             "Ставки: 100 15 17 0 22-24 30-33\n"
-            "Команды: б, топ, бонус, го, профиль, отмена, дать</code>",
+            "Команды: б, лог, топ, бонус, го, профиль, отмена, дать</code>",
             parse_mode="HTML"
         )
         return
@@ -344,6 +358,11 @@ async def handle_message(message: Message):
 
         try:
             win_num, win_emoji = spin_roulette()
+            
+            # Сохраняем в историю
+            game_history.append(f"{win_emoji} {win_num}")
+            if len(game_history) > 10:
+                game_history.pop(0)
 
             # Список всех ставок
             all_bets_lines = []
