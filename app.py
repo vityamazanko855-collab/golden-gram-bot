@@ -176,12 +176,14 @@ async def handle(message: Message):
         user_balances[uid] = bal - bet
         field = generate_mines_field()
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
+
         kb = InlineKeyboardBuilder()
         for i in range(5):
             for j in range(5):
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
         kb.button(text="💰 Забрать", callback_data="m_cash")
-        kb.adjust(5)
+        kb.adjust(5, 1)  # 5 кнопок в ряду, последняя кнопка одна
+
         await message.answer(
             f"💎 {name}, минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
             f"{format_mines_field(field, [])}\n\n"
@@ -336,7 +338,7 @@ async def handle(message: Message):
         )
         return
 
-    # ========== ГО ==========
+    # ========== ГО (РУЛЕТКА) ==========
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
@@ -447,15 +449,19 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (ИСПРАВЛЕНО) ==========
+# ========== КНОПКИ МИН (ПОЛНОСТЬЮ ИСПРАВЛЕНО) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     uid = call.from_user.id
-    if uid not in mines_games or not mines_games[uid].get("active"):
-        await call.answer("Игра не активна", show_alert=True)
+    if uid not in mines_games:
+        await call.answer("Игра не найдена", show_alert=True)
         return
 
     g = mines_games[uid]
+    if not g.get("active"):
+        await call.answer("Игра завершена", show_alert=True)
+        return
+
     parts = call.data.split("_")
     row, col = int(parts[1]), int(parts[2])
 
@@ -468,12 +474,15 @@ async def mine_click(call: CallbackQuery):
 
     if cell == "💣":
         g["active"] = False
-        await call.message.edit_text(
-            f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
-            f"{format_mines_field(g['field'], g['revealed'])}"
-        )
+        try:
+            await call.message.edit_text(
+                f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
+                f"{format_mines_field(g['field'], g['revealed'])}"
+            )
+        except:
+            pass
         del mines_games[uid]
-        await call.answer("Мина!")
+        await call.answer("Мина! Проигрыш", show_alert=True)
         return
 
     g["multiplier"] += 0.4
@@ -487,7 +496,7 @@ async def mine_click(call: CallbackQuery):
             else:
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
     kb.button(text="💰 Забрать", callback_data="m_cash")
-    kb.adjust(5)
+    kb.adjust(5, 1)
 
     try:
         await call.message.edit_text(
@@ -496,18 +505,22 @@ async def mine_click(call: CallbackQuery):
             f"Множитель: x{g['multiplier']:.1f} | Выигрыш: {format_amount(pot)} GRAM",
             reply_markup=kb.as_markup()
         )
-    except:
-        pass
-    await call.answer("⭐")
+    except Exception as e:
+        logging.error(f"Ошибка обновления: {e}")
+    await call.answer("⭐ Звезда!")
 
 @dp.callback_query(F.data == "m_cash")
 async def mine_cash(call: CallbackQuery):
     uid = call.from_user.id
-    if uid not in mines_games or not mines_games[uid].get("active"):
-        await call.answer("Игра не активна", show_alert=True)
+    if uid not in mines_games:
+        await call.answer("Игра не найдена", show_alert=True)
         return
 
     g = mines_games[uid]
+    if not g.get("active"):
+        await call.answer("Игра уже завершена", show_alert=True)
+        return
+
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
     user_balances[uid] = user_balances.get(uid, 0) + win
@@ -517,8 +530,8 @@ async def mine_cash(call: CallbackQuery):
             f"💰 {call.from_user.full_name} забрал!\n✅ +{format_amount(win)} GRAM\n"
             f"Множитель: x{g['multiplier']:.1f}\n\n{format_mines_field(g['field'], g['revealed'])}"
         )
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Ошибка при заборе: {e}")
     del mines_games[uid]
     await call.answer(f"+{format_amount(win)} GRAM", show_alert=True)
 
