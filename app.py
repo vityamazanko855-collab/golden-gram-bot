@@ -15,12 +15,12 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# ========== ДАННЫЕ В ПАМЯТИ (СБРАСЫВАЮТСЯ ПРИ ПЕРЕЗАПУСКЕ) ==========
-user_balances = {}      # user_id: balance
-game_history = []       # список выпавших чисел
-user_stats = {}         # user_id: {games_played, games_won, total_bet, total_win}
-user_levels = {}        # user_id: {level, exp}
-daily_streak = {}       # user_id: {last_claim, streak}
+# ========== ДАННЫЕ В ПАМЯТИ ==========
+user_balances = {}
+game_history = []
+user_stats = {}
+user_levels = {}
+daily_streak = {}
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
@@ -332,19 +332,17 @@ async def handle_message(message: Message):
         await asyncio.sleep(10)
         await bot.delete_message(chat_id=message.chat.id, message_id=wait_msg.message_id)
 
-        win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
-        game_history.append(f"{win_emoji} {win_num}")
-        if len(game_history) > 10:
-            game_history.pop(0)
-
+        # ========== ОБРАБОТКА СТАВОК (КАЖДАЯ СВОЙ РАНДОМ) ==========
         results = []
         for bet in pending_bets:
             uid = bet["user_id"]
             uname = bet["user_name"]
             amount = bet["amount"]
             raw_bet = bet["raw_bet"]
-            norm_bet = normalize_bet_type(raw_bet)
 
+            # Для каждой ставки крутим свой рандом
+            win_num, win_emoji, win_color, win_parity, win_dozen, win_column = spin_roulette()
+            norm_bet = normalize_bet_type(raw_bet)
             win = check_win(norm_bet, win_num, win_color, win_parity, win_dozen, win_column)
             multiplier = get_multiplier(norm_bet)
 
@@ -353,8 +351,6 @@ async def handle_message(message: Message):
                 user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
             user_stats[uid]["played"] += 1
             user_stats[uid]["total_bet"] += amount
-
-            # Обновляем опыт
             user_levels[uid] = user_levels.get(uid, 0) + 1
 
             if win:
@@ -362,11 +358,17 @@ async def handle_message(message: Message):
                 user_balances[uid] = user_balances.get(uid, 0) + winnings
                 user_stats[uid]["won"] += 1
                 user_stats[uid]["total_win"] += winnings
-                results.append(f"✅ {uname} +{winnings} GRAM")
+                results.append(f"✅ {uname} +{winnings} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                game_history.append(f"{win_emoji} {win_num}")
             else:
-                results.append(f"❌ {uname} -{amount} GRAM")
+                results.append(f"❌ {uname} -{amount} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                game_history.append(f"{win_emoji} {win_num}")
 
-        result_text = f"🎯 ВЫПАЛО: {win_emoji} {win_num}\n\n" + "\n".join(results)
+        # Ограничиваем историю 10 элементами
+        if len(game_history) > 10:
+            game_history = game_history[-10:]
+
+        result_text = "🎯 РЕЗУЛЬТАТЫ:\n\n" + "\n".join(results)
         await message.answer(result_text)
 
         pending_bets.clear()
