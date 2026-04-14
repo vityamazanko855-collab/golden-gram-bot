@@ -7,6 +7,7 @@ import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.utils.formatting import Text, Code
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
 
@@ -31,6 +32,11 @@ MAX_BETS_PER_MESSAGE = 200
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
+
+# ========== ФОРМАТИРОВАНИЕ СУММЫ ==========
+def format_amount(amount: int) -> str:
+    """Форматирует число с пробелами: 1000 -> 1 000"""
+    return f"{amount:,}".replace(",", " ")
 
 # ========== РУЛЕТКА ==========
 def spin_roulette():
@@ -135,7 +141,7 @@ def get_level(exp: int) -> int:
     else: return 5
 
 def format_balance(user_name: str, balance: int) -> str:
-    return f"{user_name}\nБаланс: {balance:,} GRAM".replace(",", " ")
+    return f"{user_name}\nБаланс: {format_amount(balance)} GRAM"
 
 def format_log():
     if not game_history:
@@ -143,9 +149,9 @@ def format_log():
     row1 = " ".join(game_history[-10:][:5])
     row2 = " ".join(game_history[-10:][5:]) if len(game_history[-10:]) > 5 else ""
     if row2:
-        return f"{row1}\n{row2}"
+        return f"<code>{row1}\n{row2}</code>"
     else:
-        return row1
+        return f"<code>{row1}</code>"
 
 # ========== АДМИН ==========
 @dp.message(Command("add_grams"))
@@ -163,7 +169,7 @@ async def add_grams_slash(message: Message):
         await message.reply("❌ Сумма числом.")
         return
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
-    await message.reply(f"✅ +{amount} GRAM\n💰 Баланс: {user_balances[ADMIN_ID]} GRAM")
+    await message.reply(f"✅ +{format_amount(amount)} GRAM\n💰 Баланс: {format_amount(user_balances[ADMIN_ID])} GRAM")
 
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
@@ -187,13 +193,19 @@ async def handle_message(message: Message):
             return
 
         total_refund = sum(bet["amount"] for bet in user_bets)
-        pending_bets = [bet for bet in pending_bets if bet["user_id"] != user_id]
+        new_pending = []
+        for bet in pending_bets:
+            if bet["user_id"] != user_id:
+                new_pending.append(bet)
+        pending_bets.clear()
+        pending_bets.extend(new_pending)
+        
         user_balances[user_id] = user_balances.get(user_id, 0) + total_refund
 
         await message.reply(
             f"✅ Ставка отменена\n\n"
-            f"💰 Возвращено: {total_refund:,} GRAM\n"
-            f"💳 Текущий баланс: {user_balances[user_id]:,} GRAM".replace(",", " ")
+            f"💰 Возвращено: {format_amount(total_refund)} GRAM\n"
+            f"💳 Текущий баланс: {format_amount(user_balances[user_id])} GRAM"
         )
         return
 
@@ -209,12 +221,12 @@ async def handle_message(message: Message):
             f"👤 {user_name}\n"
             f"🆔 {user_id}\n"
             f"📊 Уровень: {level} (опыт: {exp})\n"
-            f"💰 Баланс: {balance:,} GRAM\n\n"
+            f"💰 Баланс: {format_amount(balance)} GRAM\n\n"
             f"🎲 Игр сыграно: {stats['played']}\n"
             f"🏆 Побед: {stats['won']}\n"
             f"📈 Винрейт: {winrate:.1f}%\n"
-            f"💸 Поставлено: {stats['total_bet']:,} GRAM\n"
-            f"💵 Выиграно: {stats['total_win']:,} GRAM\n"
+            f"💸 Поставлено: {format_amount(stats['total_bet'])} GRAM\n"
+            f"💵 Выиграно: {format_amount(stats['total_win'])} GRAM\n"
             f"📊 Профит: {profit:+,} GRAM".replace(",", " ")
         )
         return
@@ -235,9 +247,9 @@ async def handle_message(message: Message):
             daily_streak[user_id] = {"last_claim": now, "streak": streak}
             await message.reply(
                 f"🎁 Ежедневный бонус!\n\n"
-                f"➕ {bonus} GRAM\n"
+                f"➕ {format_amount(bonus)} GRAM\n"
                 f"🔥 Стрик: {streak} дн.\n"
-                f"💰 Баланс: {user_balances[user_id]:,} GRAM".replace(",", " ")
+                f"💰 Баланс: {format_amount(user_balances[user_id])} GRAM"
             )
         else:
             remaining = 24 * 60 * 60 - (now - last_claim)
@@ -254,7 +266,7 @@ async def handle_message(message: Message):
 
     # ========== ЛОГ ==========
     if text.lower() in ["лог", "история"]:
-        await message.reply(format_log())
+        await message.reply(format_log(), parse_mode="HTML")
         return
 
     # ========== ТОП ==========
@@ -270,7 +282,7 @@ async def handle_message(message: Message):
                 name = user_info.full_name
             except:
                 name = f"ID: {uid}"
-            top_text += f"{i}. {name} — {bal:,} GRAM\n".replace(",", " ")
+            top_text += f"{i}. {name} — {format_amount(bal)} GRAM\n"
         await message.reply(top_text)
         return
 
@@ -303,7 +315,7 @@ async def handle_message(message: Message):
                 return
             user_balances[user_id] = sender_balance - amount
             user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            await message.reply(f"✅ {amount} GRAM → {target_name}")
+            await message.reply(f"✅ {format_amount(amount)} GRAM → {target_name}")
             return
         elif len(cmd_parts) == 2:
             try:
@@ -325,7 +337,7 @@ async def handle_message(message: Message):
                 return
             user_balances[user_id] = sender_balance - amount
             user_balances[target_id] = user_balances.get(target_id, 0) + amount
-            await message.reply(f"✅ {amount} GRAM → {target_name}")
+            await message.reply(f"✅ {format_amount(amount)} GRAM → {target_name}")
             return
 
     # ========== ПОМОЩЬ ==========
@@ -379,10 +391,10 @@ async def handle_message(message: Message):
                     user_balances[uid] = user_balances.get(uid, 0) + winnings
                     user_stats[uid]["won"] += 1
                     user_stats[uid]["total_win"] += winnings
-                    results.append(f"✅ {uname} +{winnings} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                    results.append(f"✅ {uname} +{format_amount(winnings)} GRAM ({format_amount(amount)} на {raw_bet} → {win_emoji} {win_num})")
                     game_history.append(f"{win_emoji} {win_num}")
                 else:
-                    results.append(f"❌ {uname} -{amount} GRAM ({amount} на {raw_bet} → {win_emoji} {win_num})")
+                    results.append(f"❌ {uname} -{format_amount(amount)} GRAM ({format_amount(amount)} на {raw_bet} → {win_emoji} {win_num})")
                     game_history.append(f"{win_emoji} {win_num}")
 
                 if len(game_history) > 10:
@@ -437,11 +449,13 @@ async def handle_message(message: Message):
         balance = user_balances.get(user_id, 0)
 
         if total_needed > balance:
-            await message.reply(f"❌ Недостаточно GRAM (нужно {total_needed:,})".replace(",", " "))
+            await message.reply(f"❌ Недостаточно GRAM (нужно {format_amount(total_needed)})")
             return
 
         user_balances[user_id] = balance - total_needed
 
+        # Формируем ответ как на фото: каждая ставка отдельной строкой
+        accepted_lines = []
         for bet in bet_items:
             pending_bets.append({
                 "user_id": user_id,
@@ -449,8 +463,9 @@ async def handle_message(message: Message):
                 "amount": amount,
                 "raw_bet": bet
             })
+            accepted_lines.append(f"Ставка принята: {user_name} {format_amount(amount)} GRAM на {bet}")
 
-        await message.reply(f"✅ Принято {len(bet_items)} ставок на общую сумму {total_needed:,} GRAM".replace(",", " "))
+        await message.reply("\n".join(accepted_lines))
 
 # ========== ЗАПУСК ==========
 async def main():
