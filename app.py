@@ -111,9 +111,10 @@ def get_level(exp: int) -> int:
     elif exp < 100: return 4
     else: return 5
 
+# ========== МИННОЕ ПОЛЕ 5x3 ==========
 def generate_mines_field():
-    field = [["⭐" for _ in range(5)] for _ in range(5)]
-    mines = random.sample(range(25), 3)
+    field = [["⭐" for _ in range(5)] for _ in range(3)]
+    mines = random.sample(range(15), 3)
     for m in mines:
         row, col = m // 5, m % 5
         field[row][col] = "💣"
@@ -121,7 +122,7 @@ def generate_mines_field():
 
 def format_mines_field(field, revealed):
     lines = []
-    for i in range(5):
+    for i in range(3):
         row = ""
         for j in range(5):
             if (i, j) in revealed:
@@ -178,11 +179,11 @@ async def handle(message: Message):
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
 
         kb = InlineKeyboardBuilder()
-        for i in range(5):
+        for i in range(3):
             for j in range(5):
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
         kb.button(text="💰 Забрать", callback_data="m_cash")
-        kb.adjust(5, 1)
+        kb.adjust(5, 5, 5, 1)
 
         await message.answer(
             f"💎 {name}, минное поле!\n☀️ Ставка: {format_amount(bet)} GRAM\n\n"
@@ -449,7 +450,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН ==========
+# ========== КНОПКИ МИН (ПОЛЕ 5x3) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -485,14 +486,14 @@ async def mine_click(call: CallbackQuery):
     pot = int(g["bet"] * g["multiplier"])
 
     kb = InlineKeyboardBuilder()
-    for i in range(5):
+    for i in range(3):
         for j in range(5):
             if (i, j) in g["revealed"]:
                 kb.button(text=g["field"][i][j], callback_data="done")
             else:
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
     kb.button(text="💰 Забрать", callback_data="m_cash")
-    kb.adjust(5, 1)
+    kb.adjust(5, 5, 5, 1)
 
     try:
         await call.message.edit_text(
