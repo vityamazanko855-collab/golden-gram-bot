@@ -30,8 +30,8 @@ MAX_BETS_PER_MESSAGE = 500
 MAX_LINES_PER_MESSAGE = 20
 MAX_RESULT_LINES = 50
 
-# Гифка рулетки
-ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
+# Твоя гифка с Google Диска
+ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
 
 pending_bets = []
 game_in_progress = False
@@ -354,7 +354,7 @@ async def handle_message(message: Message):
         game_in_progress = True
         game_start_time = time.time()
 
-        # Пытаемся отправить гифку
+        # Пытаемся отправить гифку с Google Диска
         gif_msg = None
         try:
             gif_msg = await message.answer_animation(ROULETTE_GIF, caption="🎰 Крутим рулетку...")
