@@ -5,6 +5,7 @@ import sys
 import random
 import sqlite3
 import time
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -24,10 +25,20 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS balances (user_id INTEGER PRIMARY KEY, balance INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, entry TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bonus (user_id INTEGER PRIMARY KEY, last_time INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS bonus (user_id INTEGER PRIMARY KEY, last_time INTEGER, streak INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS stats 
+                 (user_id INTEGER PRIMARY KEY, games_played INTEGER DEFAULT 0, games_won INTEGER DEFAULT 0, 
+                  total_bet INTEGER DEFAULT 0, total_win INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS levels 
+                 (user_id INTEGER PRIMARY KEY, level INTEGER DEFAULT 1, exp INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS daily_bonus 
+                 (user_id INTEGER PRIMARY KEY, last_claim INTEGER, current_streak INTEGER DEFAULT 0)''')
     conn.commit()
     conn.close()
 
+init_db()
+
+# ========== ФУНКЦИИ БД ==========
 def get_balance(user_id: int) -> int:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -44,8 +55,7 @@ def set_balance(user_id: int, balance: int):
     conn.close()
 
 def add_balance(user_id: int, amount: int):
-    current = get_balance(user_id)
-    set_balance(user_id, current + amount)
+    set_balance(user_id, get_balance(user_id) + amount)
 
 def get_all_balances():
     conn = sqlite3.connect(DB_FILE)
@@ -70,27 +80,92 @@ def add_history(entry: str):
     conn.commit()
     conn.close()
 
-def get_bonus_time(user_id: int) -> int:
+def get_bonus(user_id: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT last_time FROM bonus WHERE user_id = ?", (user_id,))
+    c.execute("SELECT last_time, streak FROM bonus WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return row[0] if row else 0
+    return row if row else (0, 0)
 
-def set_bonus_time(user_id: int, time_val: int):
+def set_bonus(user_id: int, last_time: int, streak: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO bonus (user_id, last_time) VALUES (?, ?)", (user_id, time_val))
+    c.execute("INSERT OR REPLACE INTO bonus (user_id, last_time, streak) VALUES (?, ?, ?)", (user_id, last_time, streak))
     conn.commit()
     conn.close()
 
-init_db()
+def get_stats(user_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT games_played, games_won, total_bet, total_win FROM stats WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (0, 0, 0, 0)
 
+def update_stats(user_id: int, won: bool, bet_amount: int, win_amount: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT games_played, games_won, total_bet, total_win FROM stats WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    if row:
+        played, won_cnt, total_bet, total_win = row
+    else:
+        played, won_cnt, total_bet, total_win = 0, 0, 0, 0
+    played += 1
+    if won:
+        won_cnt += 1
+    total_bet += bet_amount
+    total_win += win_amount
+    c.execute("INSERT OR REPLACE INTO stats VALUES (?, ?, ?, ?, ?)", (user_id, played, won_cnt, total_bet, total_win))
+    # Опыт за игру
+    c.execute("SELECT level, exp FROM levels WHERE user_id = ?", (user_id,))
+    lvl_row = c.fetchone()
+    if lvl_row:
+        level, exp = lvl_row
+    else:
+        level, exp = 1, 0
+    exp += 1
+    # Повышение уровня каждые 10 опыта
+    if exp >= level * 10:
+        level += 1
+        exp = 0
+    c.execute("INSERT OR REPLACE INTO levels VALUES (?, ?, ?)", (user_id, level, exp))
+    conn.commit()
+    conn.close()
+
+def get_level(user_id: int) -> int:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT level FROM levels WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 1
+
+def get_daily_streak(user_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT last_claim, current_streak FROM daily_bonus WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (0, 0)
+
+def set_daily_streak(user_id: int, last_claim: int, streak: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO daily_bonus VALUES (?, ?, ?)", (user_id, last_claim, streak))
+    conn.commit()
+    conn.close()
+
+# ========== КОНСТАНТЫ ==========
 ADMIN_ID = 6003768110
-BONUS_AMOUNT = 10000
-BONUS_COOLDOWN = 24 * 60 * 60
+BONUS_COOLDOWN = 4 * 60 * 60  # 4 часа
 GAME_COOLDOWN = 15
+DAILY_BONUS_BASE = 500
+DAILY_BONUS_STREAK_MULTIPLIER = 200
+
+# Уровни и лимиты переводов
+LEVEL_LIMITS = {1: 50000, 2: 100000, 3: 200000, 4: 500000, 5: 1000000}
 
 pending_bets = []
 game_in_progress = False
@@ -192,7 +267,7 @@ def get_multiplier(bet_type: str) -> int:
     return 2
 
 def format_balance(user_name: str, balance: int) -> str:
-    return f"{user_name}\nБаланс: {balance} GRAM"
+    return f"{user_name}\nБаланс: {balance:,} GRAM".replace(",", " ")
 
 def format_log():
     history = get_history()
@@ -209,19 +284,19 @@ def format_log():
 @dp.message(Command("add_grams"))
 async def add_grams_slash(message: Message):
     if message.from_user.id != ADMIN_ID:
-        await message.reply("❌ У вас нет прав для этой команды.")
+        await message.reply("❌ Нет прав.")
         return
     parts = message.text.split()
     if len(parts) != 2:
-        await message.reply("❌ Укажите сумму. Пример: /add_grams 5000")
+        await message.reply("❌ /add_grams 5000")
         return
     try:
         amount = int(parts[1])
     except:
-        await message.reply("❌ Сумма должна быть числом.")
+        await message.reply("❌ Сумма числом.")
         return
     add_balance(ADMIN_ID, amount)
-    await message.reply(f"✅ Баланс пополнен на {amount} GRAM.\n💰 Текущий баланс: {get_balance(ADMIN_ID)} GRAM")
+    await message.reply(f"✅ +{amount} GRAM\n💰 Баланс: {get_balance(ADMIN_ID)} GRAM")
 
 # ========== ГЛАВНЫЙ ОБРАБОТЧИК ==========
 @dp.message()
@@ -233,23 +308,57 @@ async def handle_message(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # ========== БОНУС ==========
-    if text.lower() == "бонус":
+    # ========== ПРОФИЛЬ ==========
+    if text.lower() in ["профиль", "profile", "/profile"]:
+        balance = get_balance(user_id)
+        level = get_level(user_id)
+        played, won, total_bet, total_win = get_stats(user_id)
+        winrate = (won / played * 100) if played > 0 else 0
+        profit = total_win - total_bet
+        limit = LEVEL_LIMITS.get(level, 50000)
+        await message.reply(
+            f"👤 {user_name}\n"
+            f"🆔 {user_id}\n"
+            f"📊 Уровень: {level}\n"
+            f"💰 Баланс: {balance:,} GRAM\n\n".replace(",", " ") +
+            f"🎲 Игр сыграно: {played}\n"
+            f"🏆 Побед: {won}\n"
+            f"📈 Винрейт: {winrate:.1f}%\n"
+            f"💸 Всего поставлено: {total_bet:,} GRAM\n"
+            f"💵 Всего выиграно: {total_win:,} GRAM\n"
+            f"📊 Профит: {profit:+,} GRAM\n\n".replace(",", " ") +
+            f"📤 Лимит передачи: {limit:,} GRAM/сутки".replace(",", " ")
+        )
+        return
+
+    # ========== БОНУС (ЕЖЕДНЕВНЫЙ СТРИК) ==========
+    if text.lower() in ["бонус", "daily"]:
         now = int(time.time())
-        last = get_bonus_time(user_id)
-        if now - last >= BONUS_COOLDOWN:
-            add_balance(user_id, BONUS_AMOUNT)
-            set_bonus_time(user_id, now)
-            await message.reply(f"🎁 +{BONUS_AMOUNT} GRAM\n💰 Баланс: {get_balance(user_id)} GRAM")
+        last_claim, streak = get_daily_streak(user_id)
+        # Проверка 24 часа
+        if now - last_claim >= 24 * 60 * 60:
+            # Если прошло больше 48 часов - стрик сброшен
+            if now - last_claim >= 48 * 60 * 60:
+                streak = 0
+            streak += 1
+            bonus_amount = DAILY_BONUS_BASE + (streak - 1) * DAILY_BONUS_STREAK_MULTIPLIER
+            add_balance(user_id, bonus_amount)
+            set_daily_streak(user_id, now, streak)
+            await message.reply(
+                f"🎁 Ежедневный бонус получен!\n\n"
+                f"➕ {bonus_amount} GRAM\n"
+                f"🔥 Стрик: {streak} дн.\n"
+                f"💰 Баланс: {get_balance(user_id):,} GRAM".replace(",", " ")
+            )
         else:
-            remaining = BONUS_COOLDOWN - (now - last)
+            remaining = 24 * 60 * 60 - (now - last_claim)
             hours = remaining // 3600
             minutes = (remaining % 3600) // 60
-            await message.reply(f"⏰ Бонус через {hours} ч. {minutes} мин.")
+            await message.reply(f"⏰ Следующий бонус через {hours} ч {minutes} мин")
         return
 
     # ========== БАЛАНС ==========
-    if text.lower() in ["б", "баланс"]:
+    if text.lower() in ["б", "баланс", "грамм"]:
         balance = get_balance(user_id)
         await message.reply(format_balance(user_name, balance))
         return
@@ -272,7 +381,7 @@ async def handle_message(message: Message):
                 name = user_info.full_name
             except:
                 name = f"ID: {uid}"
-            top_text += f"{i}. {name} — {bal} GRAM\n"
+            top_text += f"{i}. {name} — {bal:,} GRAM\n".replace(",", " ")
         await message.reply(top_text)
         return
 
@@ -287,70 +396,59 @@ async def handle_message(message: Message):
                 await message.reply("❌ Сумма должна быть числом.")
                 return
             if amount <= 0:
-                await message.reply("❌ Сумма должна быть больше нуля.")
+                await message.reply("❌ Сумма > 0.")
                 return
             sender_balance = get_balance(user_id)
             if amount > sender_balance:
-                await message.reply(f"❌ Недостаточно GRAM. Ваш баланс: {sender_balance}")
+                await message.reply(f"❌ Недостаточно GRAM. Ваш баланс: {sender_balance:,}".replace(",", " "))
                 return
+            # Проверка лимита
+            level = get_level(user_id)
+            limit = LEVEL_LIMITS.get(level, 50000)
+            # Тут нужна проверка суточного лимита (можно добавить позже)
             try:
                 target_user = await bot.get_chat(f"@{target_username}")
                 target_id = target_user.id
                 target_name = target_user.full_name
             except:
-                await message.reply(f"❌ Пользователь @{target_username} не найден.")
+                await message.reply(f"❌ @{target_username} не найден.")
                 return
             if target_id == user_id:
-                await message.reply("❌ Нельзя передать GRAM самому себе.")
-                return
-            if target_id == bot.id:
-                await message.reply("🤖 Бот не принимает GRAM.")
+                await message.reply("❌ Нельзя самому себе.")
                 return
             set_balance(user_id, sender_balance - amount)
             add_balance(target_id, amount)
-            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {get_balance(user_id)} GRAM")
+            await message.reply(f"✅ {amount} GRAM → {target_name}\n💰 Ваш баланс: {get_balance(user_id):,}".replace(",", " "))
             return
         elif len(cmd_parts) == 2:
             try:
                 amount = int(cmd_parts[1])
             except:
-                await message.reply("❌ Сумма должна быть числом.")
-                return
-            if amount <= 0:
-                await message.reply("❌ Сумма должна быть больше нуля.")
+                await message.reply("❌ Сумма числом.")
                 return
             if not message.reply_to_message:
-                await message.reply("❌ Ответь на сообщение или используй `дать @username 1000`")
+                await message.reply("❌ Ответь на сообщение или `дать @user 1000`")
                 return
             target_id = message.reply_to_message.from_user.id
             target_name = message.reply_to_message.from_user.full_name
-            if target_id == bot.id:
-                await message.reply("🤖 Бот не принимает GRAM.")
-                return
             if target_id == user_id:
-                await message.reply("❌ Нельзя передать GRAM самому себе.")
+                await message.reply("❌ Нельзя самому себе.")
                 return
             sender_balance = get_balance(user_id)
             if amount > sender_balance:
-                await message.reply(f"❌ Недостаточно GRAM. Ваш баланс: {sender_balance}")
+                await message.reply(f"❌ Недостаточно GRAM.")
                 return
             set_balance(user_id, sender_balance - amount)
             add_balance(target_id, amount)
-            await message.reply(f"✅ Перевод {amount} GRAM для {target_name}\n💰 Ваш баланс: {get_balance(user_id)} GRAM")
-            return
-        else:
-            await message.reply("❌ Формат: `дать @username 1000` или ответь на сообщение и напиши `дать 1000`")
+            await message.reply(f"✅ {amount} GRAM → {target_name}")
             return
 
     # ========== ПОМОЩЬ ==========
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
-        balance = get_balance(user_id)
         await message.reply(
-            f"{user_name}\n\n"
             f"🎰 GOLDEN GRAM ROULETTE\n\n"
-            f"Ставки: 100 к, 200 ч, 500 чёт, 1000 23-34\n"
-            f"Команды: б, лог, топ, бонус, го, дать\n\n"
-            f"💰 Баланс: {balance} GRAM"
+            f"Ставки: 100 к, 200 ч, 500 чёт, 1000 23-34, 100 1-12\n"
+            f"Команды: б, лог, топ, бонус, го, дать, профиль"
         )
         return
 
@@ -358,14 +456,13 @@ async def handle_message(message: Message):
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
-            await message.reply("⏳ Дождитесь окончания игры!")
+            await message.reply("⏳ Дождитесь окончания!")
             return
         if now - last_game_time < GAME_COOLDOWN:
-            remaining = GAME_COOLDOWN - (now - last_game_time)
-            await message.reply(f"⏰ Подожди {remaining} сек.")
+            await message.reply(f"⏰ Подожди {GAME_COOLDOWN - (now - last_game_time)} сек.")
             return
         if not pending_bets:
-            await message.reply("❌ Нет активных ставок.")
+            await message.reply("❌ Нет ставок.")
             return
 
         game_in_progress = True
@@ -391,8 +488,10 @@ async def handle_message(message: Message):
                 winnings = amount * multiplier
                 add_balance(uid, winnings)
                 results.append(f"✅ {uname} +{winnings} GRAM")
+                update_stats(uid, True, amount, winnings)
             else:
                 results.append(f"❌ {uname} -{amount} GRAM")
+                update_stats(uid, False, amount, 0)
 
         result_text = f"🎯 ВЫПАЛО: {win_emoji} {win_num}\n\n" + "\n".join(results)
         await message.answer(result_text)
@@ -405,12 +504,11 @@ async def handle_message(message: Message):
     # ========== СТАВКА ==========
     if len(parts) >= 2:
         if game_in_progress:
-            await message.reply("⏳ Дождитесь окончания игры!")
+            await message.reply("⏳ Дождитесь окончания!")
             return
         now = int(time.time())
         if now - last_game_time < GAME_COOLDOWN:
-            remaining = GAME_COOLDOWN - (now - last_game_time)
-            await message.reply(f"⏰ Подожди {remaining} сек.")
+            await message.reply(f"⏰ Подожди {GAME_COOLDOWN - (now - last_game_time)} сек.")
             return
 
         try:
@@ -422,19 +520,16 @@ async def handle_message(message: Message):
             await message.reply("❌ Ставка > 0")
             return
 
-        # Все части после суммы — это список ставок
         bet_items = " ".join(parts[1:]).split()
         total_needed = amount * len(bet_items)
         balance = get_balance(user_id)
 
         if total_needed > balance:
-            await message.reply(format_balance(user_name, balance) + f"\n\n❌ Недостаточно GRAM (нужно {total_needed})")
+            await message.reply(f"❌ Недостаточно GRAM (нужно {total_needed})")
             return
 
-        # Списываем общую сумму
         set_balance(user_id, balance - total_needed)
 
-        # Добавляем каждую ставку отдельно
         accepted = []
         for bet in bet_items:
             pending_bets.append({
@@ -443,9 +538,9 @@ async def handle_message(message: Message):
                 "amount": amount,
                 "raw_bet": bet
             })
-            accepted.append(f"{amount} на {bet}")
+            accepted.append(f"✅ {amount} GRAM на {bet}")
 
-        await message.reply(f"✅ Ставки приняты:\n" + "\n".join(accepted))
+        await message.reply("\n".join(accepted))
 
 # ========== ЗАПУСК ==========
 async def main():
