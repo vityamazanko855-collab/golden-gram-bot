@@ -172,12 +172,11 @@ async def handle(message: Message):
         field = generate_mines_field()
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
 
-        # Кнопка "Забрать" НЕ показывается при старте
         kb = InlineKeyboardBuilder()
         for i in range(5):
             for j in range(5):
                 kb.button(text="❓", callback_data=f"m_{i}_{j}")
-        kb.adjust(5, 5, 5, 5, 5)
+        kb.adjust(5)
 
         await message.answer(
             f"💎 {name}, вы начали игру минное поле!\n"
@@ -445,7 +444,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (КНОПКА "ЗАБРАТЬ" ПОЯВЛЯЕТСЯ ПОСЛЕ ПЕРВОЙ ЗВЕЗДЫ) ==========
+# ========== КНОПКИ МИН (ПОЛНОСТЬЮ ПЕРЕПИСАНО) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -458,6 +457,7 @@ async def mine_click(call: CallbackQuery):
     if not g["active"]:
         return
 
+    # Если это кнопка "Забрать" - не обрабатываем здесь
     if call.data == "m_cash":
         return
 
