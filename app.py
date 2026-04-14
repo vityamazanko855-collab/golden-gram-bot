@@ -271,9 +271,10 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    # ========== ДАТЬ ==========
+    # ========== ДАТЬ (ПЕРЕВОДЫ) ==========
     if text.lower().startswith("дать "):
         p = text.split()
+        # Дать всё по ответу
         if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
             t = message.reply_to_message.from_user
             if t.id == uid:
@@ -287,6 +288,7 @@ async def handle(message: Message):
             user_balances[t.id] = user_balances.get(t.id, 0) + amt
             await message.reply(f"✅ Все {format_amount(amt)} GRAM → {t.full_name}")
             return
+        # Дать по @username
         elif len(p) == 3 and p[1].startswith("@"):
             try:
                 amt = int(p[2])
@@ -303,6 +305,7 @@ async def handle(message: Message):
                 await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
             except:
                 await message.reply("❌ Не найден")
+        # Дать по ответу
         elif len(p) == 2 and message.reply_to_message:
             try:
                 amt = int(p[1])
@@ -334,7 +337,7 @@ async def handle(message: Message):
         )
         return
 
-    # ========== ГО ==========
+    # ========== ГО (РУЛЕТКА) ==========
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
@@ -445,7 +448,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН (ГАРАНТИРОВАННО РАБОТАЕТ) ==========
+# ========== КНОПКИ МИН (ИСПРАВЛЕНО) ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -505,15 +508,23 @@ async def mine_click(call: CallbackQuery):
 async def mine_cash(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
+    
     if uid not in mines_games:
         return
+        
     g = mines_games[uid]
     if not g.get("active"):
         return
 
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win
+    
+    # НАЧИСЛЯЕМ НА БАЛАНС
+    if uid not in user_balances:
+        user_balances[uid] = 0
+    user_balances[uid] = user_balances[uid] + win
+    
+    del mines_games[uid]
 
     try:
         await call.message.edit_text(
@@ -522,9 +533,9 @@ async def mine_cash(call: CallbackQuery):
             f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
             f"{format_mines_field(g['field'], g['revealed'])}"
         )
-    except:
-        pass
-    del mines_games[uid]
+    except Exception as e:
+        logging.error(f"Ошибка при выводе: {e}")
+        await call.message.answer(f"✅ Выигрыш {format_amount(win)} GRAM зачислен на баланс!")
 
 # ========== ЗАПУСК ==========
 async def main():
