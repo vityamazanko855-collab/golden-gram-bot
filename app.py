@@ -50,6 +50,50 @@ def spin_roulette():
         color_name = "ЧЁРНОЕ"
     return number, color_emoji, color_name
 
+def is_valid_bet(bet: str) -> bool:
+    """Проверяет, является ли ставка допустимой"""
+    bet = bet.lower().strip()
+    
+    # Цвета
+    if bet in ["к", "красное", "красный", "red", "🔴", "ч", "чёрное", "черное", "чёрный", "черный", "black", "⚫"]:
+        return True
+    
+    # Чёт/нечет
+    if bet in ["чёт", "чет", "чётное", "четное", "even", "неч", "нечётное", "нечетное", "odd"]:
+        return True
+    
+    # Зеро
+    if bet in ["0", "зеро", "zero", "🟢"]:
+        return True
+    
+    # Дюжины
+    if bet in ["1-12", "13-24", "25-36"]:
+        return True
+    
+    # Колонки
+    if bet in ["1-я", "1я", "первая", "первый", "2-я", "2я", "вторая", "второй", "3-я", "3я", "третья", "третий"]:
+        return True
+    
+    # Конкретные числа
+    if bet.isdigit():
+        num = int(bet)
+        if 0 <= num <= 36:
+            return True
+    
+    # Диапазоны
+    if "-" in bet:
+        try:
+            parts = bet.split("-")
+            if len(parts) == 2:
+                start = int(parts[0].strip())
+                end = int(parts[1].strip())
+                if 0 <= start <= 36 and 0 <= end <= 36:
+                    return True
+        except:
+            pass
+    
+    return False
+
 def normalize_bet(bet: str) -> str:
     bet = bet.lower().strip()
     if bet in ["к", "красное", "красный", "red", "🔴"]: return "красное"
@@ -57,6 +101,9 @@ def normalize_bet(bet: str) -> str:
     if bet in ["чёт", "чет", "чётное", "четное", "even"]: return "чётное"
     if bet in ["неч", "нечётное", "нечетное", "odd"]: return "нечётное"
     if bet in ["0", "зеро", "zero", "🟢"]: return "0"
+    if bet in ["1-я", "1я", "первая", "первый"]: return "1-я"
+    if bet in ["2-я", "2я", "вторая", "второй"]: return "2-я"
+    if bet in ["3-я", "3я", "третья", "третий"]: return "3-я"
     return bet
 
 def check_win(bet: str, num: int, color: str) -> bool:
@@ -66,6 +113,12 @@ def check_win(bet: str, num: int, color: str) -> bool:
     if bet == "чётное" and num != 0 and num % 2 == 0: return True
     if bet == "нечётное" and num % 2 == 1: return True
     if bet == "0" and num == 0: return True
+    if bet == "1-12" and 1 <= num <= 12: return True
+    if bet == "13-24" and 13 <= num <= 24: return True
+    if bet == "25-36" and 25 <= num <= 36: return True
+    if bet == "1-я" and num != 0 and num % 3 == 1: return True
+    if bet == "2-я" and num != 0 and num % 3 == 2: return True
+    if bet == "3-я" and num != 0 and num % 3 == 0: return True
     if bet.isdigit(): return int(bet) == num
     if "-" in bet:
         try:
@@ -83,6 +136,7 @@ def get_multiplier(bet: str) -> int:
     bet = normalize_bet(bet)
     if bet in ["красное", "чёрное", "чётное", "нечётное"]: return 2
     if bet == "0" or bet.isdigit(): return 36
+    if bet in ["1-12", "13-24", "25-36", "1-я", "2-я", "3-я"]: return 3
     if "-" in bet:
         try:
             parts = bet.split("-")
@@ -408,9 +462,16 @@ async def handle(message: Message):
             await message.reply("❌ Ставка > 0")
             return
 
-        bets = " ".join(parts[1:]).split()
+        # Фильтруем только допустимые ставки
+        all_bets = " ".join(parts[1:]).split()
+        bets = [b for b in all_bets if is_valid_bet(b)]
+        
+        if not bets:
+            await message.reply("❌ Нет допустимых ставок. Примеры: красное, чёрное, чётное, 14, 1-12")
+            return
+
         if len(bets) > MAX_BETS_PER_MESSAGE:
-            await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE}")
+            await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок")
             return
 
         total = amt * len(bets)
@@ -497,28 +558,4 @@ async def mine_cash(call: CallbackQuery):
         return
 
     g["active"] = False
-    win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win
-
-    if uid not in user_stats:
-        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-    user_stats[uid]["played"] += 1
-    user_stats[uid]["won"] += 1
-    user_stats[uid]["total_bet"] += g["bet"]
-    user_stats[uid]["total_win"] += win
-    user_levels[uid] = user_levels.get(uid, 0) + 1
-
-    del mines_games[uid]
-
-    await call.message.edit_text(
-        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
-        f"✅ +{format_amount(win)} GRAM\n"
-        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
-        f"{format_mines_field(g['field'], g['revealed'])}"
-    )
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    win = int(g["bet
