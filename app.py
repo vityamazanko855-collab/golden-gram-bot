@@ -15,7 +15,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Данные
 user_balances = {}
 user_stats = {}
 user_levels = {}
@@ -29,7 +28,7 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
+ROULETTE_GIF = "https://media1.tenor.com/m/-_Wz-6rBqBUAAAAC/roulette-wheel.gif"
 
 pending_bets = []
 game_in_progress = False
@@ -50,34 +49,6 @@ def spin_roulette():
         color_emoji = "⚫"
         color_name = "ЧЁРНОЕ"
     return number, color_emoji, color_name
-
-def is_valid_bet(bet: str) -> bool:
-    bet = bet.lower().strip()
-    if bet in ["к", "красное", "красный", "red", "🔴", "ч", "чёрное", "черное", "чёрный", "черный", "black", "⚫"]:
-        return True
-    if bet in ["чёт", "чет", "чётное", "четное", "even", "неч", "нечётное", "нечетное", "odd"]:
-        return True
-    if bet in ["0", "зеро", "zero", "🟢"]:
-        return True
-    if bet in ["1-12", "13-24", "25-36"]:
-        return True
-    if bet in ["1-я", "1я", "первая", "первый", "2-я", "2я", "вторая", "второй", "3-я", "3я", "третья", "третий"]:
-        return True
-    if bet.isdigit():
-        num = int(bet)
-        if 0 <= num <= 36:
-            return True
-    if "-" in bet:
-        try:
-            parts = bet.split("-")
-            if len(parts) == 2:
-                start = int(parts[0].strip())
-                end = int(parts[1].strip())
-                if 0 <= start <= 36 and 0 <= end <= 36:
-                    return True
-        except:
-            pass
-    return False
 
 def normalize_bet(bet: str) -> str:
     bet = bet.lower().strip()
@@ -164,7 +135,6 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
-# Админ
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -182,7 +152,6 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-# Главный обработчик
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -192,7 +161,6 @@ async def handle(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # Мины
     if text.lower().startswith("мины "):
         try:
             bet = int(parts[1])
@@ -225,7 +193,6 @@ async def handle(message: Message):
         )
         return
 
-    # Отмена
     if text.lower() in ["отмена", "отменить"]:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -240,7 +207,6 @@ async def handle(message: Message):
         await message.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
         return
 
-    # Профиль
     if text.lower() in ["профиль", "profile"]:
         bal = user_balances.get(uid, 0)
         stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
@@ -255,7 +221,6 @@ async def handle(message: Message):
         )
         return
 
-    # Бонус
     if text.lower() == "бонус":
         now = int(time.time())
         ds = daily_streak.get(uid, {"last": 0, "streak": 0})
@@ -274,13 +239,11 @@ async def handle(message: Message):
             await message.reply(f"<code>⏰ Через {h} ч {m} мин</code>", parse_mode="HTML")
         return
 
-    # Баланс
     if text.lower() in ["б", "баланс"]:
         bal = user_balances.get(uid, 0)
         await message.reply(f"<code>{name}\nБаланс: {format_amount(bal)} GRAM</code>", parse_mode="HTML")
         return
 
-    # Лог
     if text.lower() in ["лог", "история"]:
         if not game_history:
             await message.reply("📋 Пусто")
@@ -291,7 +254,6 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    # Топ
     if text.lower() == "топ":
         if not user_balances:
             await message.reply("📊 Пусто")
@@ -308,7 +270,6 @@ async def handle(message: Message):
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    # Дать
     if text.lower().startswith("дать "):
         p = text.split()
         if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
@@ -358,7 +319,6 @@ async def handle(message: Message):
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
         return
 
-    # Помощь
     if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
@@ -371,7 +331,6 @@ async def handle(message: Message):
         )
         return
 
-    # ГО
     if text.lower() == "го":
         now = int(time.time())
         if game_in_progress:
@@ -447,7 +406,6 @@ async def handle(message: Message):
             last_game_time = int(time.time())
         return
 
-    # Ставка
     if len(parts) >= 2:
         if game_in_progress:
             await message.reply("⏳ Идёт игра")
@@ -460,13 +418,7 @@ async def handle(message: Message):
             await message.reply("❌ Ставка > 0")
             return
 
-        all_bets = " ".join(parts[1:]).split()
-        bets = [b for b in all_bets if is_valid_bet(b)]
-
-        if not bets:
-            await message.reply("❌ Нет допустимых ставок. Примеры: красное, чёрное, чётное, 14, 1-12")
-            return
-
+        bets = " ".join(parts[1:]).split()
         if len(bets) > MAX_BETS_PER_MESSAGE:
             await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок")
             return
@@ -488,7 +440,6 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# Кнопки мин
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -557,4 +508,27 @@ async def mine_cash(call: CallbackQuery):
 
     g["active"] = False
     win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win 
+    user_balances[uid] = user_balances.get(uid, 0) + win
+
+    if uid not in user_stats:
+        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+    user_stats[uid]["played"] += 1
+    user_stats[uid]["won"] += 1
+    user_stats[uid]["total_bet"] += g["bet"]
+    user_stats[uid]["total_win"] += win
+    user_levels[uid] = user_levels.get(uid, 0) + 1
+
+    del mines_games[uid]
+
+    await call.message.edit_text(
+        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
+        f"✅ +{format_amount(win)} GRAM\n"
+        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}"
+    )
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
