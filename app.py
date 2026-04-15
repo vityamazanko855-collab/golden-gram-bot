@@ -28,7 +28,6 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-# ГИФКА РУЛЕТКИ
 ROULETTE_GIF = "https://i.gifer.com/3P1d3.gif"
 
 pending_bets = []
@@ -249,10 +248,12 @@ async def handle(message: Message):
         if not game_history:
             await message.reply("📋 Пусто")
             return
-        row1 = " ".join(game_history[-10:][:5])
-        row2 = " ".join(game_history[-10:][5:]) if len(game_history[-10:]) > 5 else ""
-        txt = f"{row1}\n{row2}" if row2 else row1
-        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
+        # Форматируем как на скрине: столбик из 10 чисел с эмодзи
+        log_lines = []
+        for entry in game_history[-10:]:
+            log_lines.append(entry)
+        log_text = "\n".join(log_lines)
+        await message.reply(f"<code>{log_text}</code>", parse_mode="HTML")
         return
 
     if text.lower() == "топ":
