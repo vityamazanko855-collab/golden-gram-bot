@@ -183,16 +183,54 @@ def get_mines_keyboard(field, revealed):
         kb.add(InlineKeyboardButton("💰 Забрать выигрыш", callback_data="cash"))
     return kb
 
+# ==================== КОМАНДА ДАТЬ ВСЁ (ответом на сообщение) ====================
+@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().strip() == 'дать всё')
+async def give_all_grams_reply(message: types.Message):
+    uid = message.from_user.id
+    
+    target_id = message.reply_to_message.from_user.id
+    target_name = message.reply_to_message.from_user.full_name or "Пользователь"
+    
+    if uid == target_id:
+        await message.reply("❌ Нельзя перевести GRAM самому себе")
+        return
+    
+    sender_balance = user_balances.get(uid, 0)
+    
+    if sender_balance <= 0:
+        await message.reply(f"❌ У вас нет GRAM для перевода! Ваш баланс: {format_amount(sender_balance)} GRAM")
+        return
+    
+    amount = sender_balance
+    
+    user_balances[uid] = 0
+    user_balances[target_id] = user_balances.get(target_id, 0) + amount
+    
+    await message.reply(
+        f"✅ Перевод ВСЕХ GRAM выполнен!\n"
+        f"📤 Отправитель: {message.from_user.full_name}\n"
+        f"📥 Получатель: {target_name}\n"
+        f"💰 Сумма: {format_amount(amount)} GRAM"
+    )
+    
+    try:
+        await bot.send_message(
+            target_id,
+            f"✅ Вам переведены ВСЕ GRAM ({format_amount(amount)} GRAM) от {message.from_user.full_name}\n"
+            f"💰 Ваш баланс: {format_amount(user_balances[target_id])} GRAM"
+        )
+    except:
+        pass
+
 # ==================== КОМАНДА ДАТЬ (ответом на сообщение) ====================
-@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать'))
+@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать') and not message.text.lower().startswith('дать всё'))
 async def give_grams_reply(message: types.Message):
     uid = message.from_user.id
     text = message.text.strip()
     
-    # Проверяем формат: дать 1000 (в ответ на сообщение)
     parts = text.split()
     if len(parts) != 2:
-        await message.reply("❌ Неправильный формат!\nИспользуйте: `дать 1000` в ответ на сообщение пользователя", parse_mode="HTML")
+        await message.reply("❌ Неправильный формат!\nИспользуйте: `дать 1000` в ответ на сообщение пользователя\nИли: `дать всё` для перевода всех GRAM", parse_mode="HTML")
         return
     
     try:
@@ -205,22 +243,18 @@ async def give_grams_reply(message: types.Message):
         await message.reply("❌ Сумма должна быть больше 0")
         return
     
-    # Получаем получателя из ответного сообщения
     target_id = message.reply_to_message.from_user.id
     target_name = message.reply_to_message.from_user.full_name or "Пользователь"
     
-    # Нельзя перевести самому себе
     if uid == target_id:
         await message.reply("❌ Нельзя перевести GRAM самому себе")
         return
     
-    # Проверяем баланс отправителя
     sender_balance = user_balances.get(uid, 0)
     if sender_balance < amount:
         await message.reply(f"❌ Недостаточно GRAM! Ваш баланс: {format_amount(sender_balance)} GRAM")
         return
     
-    # Переводим средства
     user_balances[uid] = sender_balance - amount
     user_balances[target_id] = user_balances.get(target_id, 0) + amount
     
@@ -232,55 +266,10 @@ async def give_grams_reply(message: types.Message):
         f"💳 Ваш баланс: {format_amount(user_balances[uid])} GRAM"
     )
     
-    # Уведомляем получателя
     try:
         await bot.send_message(
             target_id,
             f"✅ Вам переведено {format_amount(amount)} GRAM от {message.from_user.full_name}\n"
-            f"💰 Ваш баланс: {format_amount(user_balances[target_id])} GRAM"
-        )
-    except:
-        pass
-
-# ==================== КОМАНДА ДАТЬ ВСЁ (ответом на сообщение) ====================
-@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать всё'))
-async def give_all_grams_reply(message: types.Message):
-    uid = message.from_user.id
-    
-    # Получаем получателя из ответного сообщения
-    target_id = message.reply_to_message.from_user.id
-    target_name = message.reply_to_message.from_user.full_name or "Пользователь"
-    
-    # Нельзя перевести самому себе
-    if uid == target_id:
-        await message.reply("❌ Нельзя перевести GRAM самому себе")
-        return
-    
-    # Получаем баланс отправителя
-    sender_balance = user_balances.get(uid, 0)
-    
-    if sender_balance <= 0:
-        await message.reply(f"❌ У вас нет GRAM для перевода! Ваш баланс: {format_amount(sender_balance)} GRAM")
-        return
-    
-    amount = sender_balance
-    
-    # Переводим все средства
-    user_balances[uid] = 0
-    user_balances[target_id] = user_balances.get(target_id, 0) + amount
-    
-    await message.reply(
-        f"✅ Перевод ВСЕХ GRAM выполнен!\n"
-        f"📤 Отправитель: {message.from_user.full_name}\n"
-        f"📥 Получатель: {target_name}\n"
-        f"💰 Сумма: {format_amount(amount)} GRAM"
-    )
-    
-    # Уведомляем получателя
-    try:
-        await bot.send_message(
-            target_id,
-            f"✅ Вам переведены ВСЕ GRAM ({format_amount(amount)} GRAM) от {message.from_user.full_name}\n"
             f"💰 Ваш баланс: {format_amount(user_balances[target_id])} GRAM"
         )
     except:
