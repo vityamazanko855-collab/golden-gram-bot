@@ -5,7 +5,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, BotCommand
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
@@ -135,17 +135,7 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
-# ========== ОБРАБОТЧИК ВСТРОЕННЫХ КОМАНД (над клавиатурой) ==========
-@dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
-async def handle_mentioned_commands(message: Message):
-    text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
-    if text == "/top":
-        await top_cmd(message)
-    elif text == "/profile":
-        await profile_cmd(message)
-    elif text in ["/help", "/start"]:
-        await help_cmd(message)
-
+# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 async def top_cmd(message: Message):
     if not user_balances:
         await message.reply("📊 Пусто")
@@ -187,7 +177,9 @@ async def help_cmd(message: Message):
         parse_mode="HTML"
     )
 
-# ========== ОСНОВНЫЕ КОМАНДЫ ==========
+# ========== ОБРАБОТЧИКИ КОМАНД (В ПРАВИЛЬНОМ ПОРЯДКЕ) ==========
+
+# 1. Команды через /
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await help_cmd(message)
@@ -209,6 +201,31 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
+# 2. Встроенные команды с @ бота
+@dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
+async def handle_mentioned_commands(message: Message):
+    text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
+    if text == "/top":
+        await top_cmd(message)
+    elif text == "/profile":
+        await profile_cmd(message)
+    elif text in ["/help", "/start"]:
+        await help_cmd(message)
+
+# 3. Текстовые команды (помощь, топ, профиль)
+@dp.message(F.text.in_({"помощь", "команды", "help", "/help"}))
+async def text_help(message: Message):
+    await help_cmd(message)
+
+@dp.message(F.text.in_({"топ", "/top"}))
+async def text_top(message: Message):
+    await top_cmd(message)
+
+@dp.message(F.text.in_({"профиль", "profile", "/profile"}))
+async def text_profile(message: Message):
+    await profile_cmd(message)
+
+# 4. Общий обработчик (всегда последний)
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -264,10 +281,6 @@ async def handle(message: Message):
         await message.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
         return
 
-    if text.lower() in ["профиль", "profile"]:
-        await profile_cmd(message)
-        return
-
     if text.lower() == "бонус":
         now = int(time.time())
         ds = daily_streak.get(uid, {"last": 0, "streak": 0})
@@ -298,10 +311,6 @@ async def handle(message: Message):
         log_lines = [entry for entry in game_history[-10:]]
         log_text = "\n".join(log_lines)
         await message.reply(f"<code>{log_text}</code>", parse_mode="HTML")
-        return
-
-    if text.lower() == "топ":
-        await top_cmd(message)
         return
 
     if text.lower().startswith("дать "):
@@ -351,10 +360,6 @@ async def handle(message: Message):
             user_balances[uid] -= amt
             user_balances[t.id] = user_balances.get(t.id, 0) + amt
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
-        return
-
-    if text.lower() in ["помощь", "команды", "help", "старт"]:
-        await help_cmd(message)
         return
 
     if text.lower() == "го":
@@ -467,6 +472,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
+# ========== КНОПКИ МИН ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -550,12 +556,4 @@ async def mine_cash(call: CallbackQuery):
     await call.message.edit_text(
         f"💰 {call.from_user.full_name} забрал выигрыш!\n"
         f"✅ +{format_amount(win)} GRAM\n"
-        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
-        f"{format_mines_field(g['field'], g['revealed'])}"
-    )
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        f"💲 Итоговый множитель: x{g['multiplier']:.2
