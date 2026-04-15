@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-user_balances = {}
+user_balances = {bal = 999999999}
 user_stats = {}
 user_levels = {}
 daily_streak = {}
