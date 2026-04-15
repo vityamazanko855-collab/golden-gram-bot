@@ -549,4 +549,4 @@ async def handle(message: Message):
             await message.answer(f"<code>Рулетка: {win_num} {win_emoji}</code>", parse_mode="HTML")
             for i in range(0, len(all_bets), 50):
                 await message.answer("<code>" + "\n".join(all_bets[i:i+50]) + "</code>", parse_mode="HTML")
-            for i in range(0, len(win_res), 50
+            for i in range(0, len(win_res), 50):
