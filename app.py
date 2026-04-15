@@ -3,17 +3,17 @@ import asyncio
 import logging
 import random
 import time
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram import Bot, Dispatcher, types
+from aiogram.dispatcher.filters import Command
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils import executor
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
 user_balances = {}
 user_stats = {}
@@ -169,7 +169,22 @@ def format_cards(hand):
         result.append(f"{rank}{suit}")
     return " ".join(result)
 
-async def help_cmd(message: Message):
+def get_mines_keyboard(field, revealed):
+    kb = InlineKeyboardMarkup(row_width=5)
+    for i in range(5):
+        row_buttons = []
+        for j in range(5):
+            if (i, j) in revealed:
+                row_buttons.append(InlineKeyboardButton(field[i][j], callback_data="done"))
+            else:
+                row_buttons.append(InlineKeyboardButton("❓", callback_data=f"m_{i}_{j}"))
+        kb.row(*row_buttons)
+    if revealed:
+        kb.add(InlineKeyboardButton("💰 Забрать выигрыш", callback_data="cash"))
+    return kb
+
+@dp.message_handler(Command("start"))
+async def start_cmd(message: Message):
     await message.reply(
         "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
         "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
@@ -181,47 +196,7 @@ async def help_cmd(message: Message):
         parse_mode="HTML"
     )
 
-async def top_cmd(message: Message):
-    if not user_balances:
-        await message.reply("📊 Пусто")
-        return
-    sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
-    txt = "🏆 ТОП-10:\n\n"
-    for i, (u, b) in enumerate(sort, 1):
-        try:
-            u = await bot.get_chat(u)
-            n = u.full_name
-        except:
-            n = str(u)
-        txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
-    await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
-
-async def profile_cmd(message: Message):
-    uid = message.from_user.id
-    name = message.from_user.full_name or "Игрок"
-    bal = user_balances.get(uid, 0)
-    stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
-    exp = user_levels.get(uid, 0)
-    lvl = get_level(exp)
-    winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
-    profit = stats["total_win"] - stats["total_bet"]
-    await message.reply(
-        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
-        f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
-        f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
-    )
-
-@dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
-async def handle_mentioned_commands(message: Message):
-    text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
-    if text == "/top":
-        await top_cmd(message)
-    elif text == "/profile":
-        await profile_cmd(message)
-    elif text in ["/help", "/start"]:
-        await help_cmd(message)
-
-@dp.message(Command("add_grams"))
+@dp.message_handler(commands=["add_grams"])
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
         await message.reply("❌ Нет прав")
@@ -238,7 +213,7 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-@dp.message()
+@dp.message_handler()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
 
@@ -273,7 +248,6 @@ async def handle(message: Message):
             "player_hand": player_hand,
             "dealer_hand": dealer_hand,
             "active": True,
-            "doubled": False
         }
         
         player_val = hand_value(player_hand)
@@ -303,11 +277,12 @@ async def handle(message: Message):
             )
             return
         
-        kb = InlineKeyboardBuilder()
-        kb.button(text="🃏 Взять", callback_data="bj_hit")
-        kb.button(text="✋ Хватит", callback_data="bj_stand")
-        kb.button(text="🏳️ Сдаюсь", callback_data="bj_surrender")
-        kb.adjust(3)
+        kb = InlineKeyboardMarkup(row_width=3)
+        kb.add(
+            InlineKeyboardButton("🃏 Взять", callback_data="bj_hit"),
+            InlineKeyboardButton("✋ Хватит", callback_data="bj_stand"),
+            InlineKeyboardButton("🏳️ Сдаюсь", callback_data="bj_surrender")
+        )
         
         await message.reply(
             f"<code>🃏 БЛЭКДЖЕК\n"
@@ -315,7 +290,7 @@ async def handle(message: Message):
             f"Ваши карты: {format_cards(player_hand)} ({player_val})\n"
             f"Карта дилера: {format_cards([dealer_up])}</code>",
             parse_mode="HTML",
-            reply_markup=kb.as_markup()
+            reply_markup=kb
         )
         return
 
@@ -336,18 +311,14 @@ async def handle(message: Message):
         field = generate_mines_field()
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
 
-        kb = InlineKeyboardBuilder()
-        for i in range(5):
-            for j in range(5):
-                kb.button(text="❓", callback_data=f"m_{i}_{j}")
-        kb.adjust(5)
+        kb = get_mines_keyboard(field, [])
 
         await message.answer(
             f"💎 {name}, вы начали игру минное поле!\n"
             f"📌 Ставка: {format_amount(bet)} GRAM\n"
             f"💲 Выигрыш: x1,0 | {format_amount(bet)} GRAM\n\n"
             f"{format_mines_field(field, [])}",
-            reply_markup=kb.as_markup()
+            reply_markup=kb
         )
         return
 
@@ -366,7 +337,17 @@ async def handle(message: Message):
         return
 
     if text.lower() in ["профиль", "profile"]:
-        await profile_cmd(message)
+        bal = user_balances.get(uid, 0)
+        stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
+        exp = user_levels.get(uid, 0)
+        lvl = get_level(exp)
+        winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
+        profit = stats["total_win"] - stats["total_bet"]
+        await message.reply(
+            f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
+            f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
+            f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
+        )
         return
 
     if text.lower() == "бонус":
@@ -402,60 +383,32 @@ async def handle(message: Message):
         return
 
     if text.lower() == "топ":
-        await top_cmd(message)
-        return
-
-    if text.lower().startswith("дать "):
-        p = text.split()
-        if len(p) == 2 and p[1] == "всё" and message.reply_to_message:
-            t = message.reply_to_message.from_user
-            if t.id == uid:
-                await message.reply("❌ Нельзя себе")
-                return
-            amt = user_balances.get(uid, 0)
-            if amt <= 0:
-                await message.reply("❌ 0 GRAM")
-                return
-            user_balances[uid] = 0
-            user_balances[t.id] = user_balances.get(t.id, 0) + amt
-            await message.reply(f"✅ Все {format_amount(amt)} GRAM → {t.full_name}")
+        if not user_balances:
+            await message.reply("📊 Пусто")
             return
-        elif len(p) == 3 and p[1].startswith("@"):
+        sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+        txt = "🏆 ТОП-10:\n\n"
+        for i, (u, b) in enumerate(sort, 1):
             try:
-                amt = int(p[2])
+                u = await bot.get_chat(u)
+                n = u.full_name
             except:
-                return
-            if amt <= 0: return
-            if user_balances.get(uid, 0) < amt:
-                await message.reply("❌ Недостаточно")
-                return
-            try:
-                t = await bot.get_chat(p[1])
-                user_balances[uid] -= amt
-                user_balances[t.id] = user_balances.get(t.id, 0) + amt
-                await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
-            except:
-                await message.reply("❌ Не найден")
-        elif len(p) == 2 and message.reply_to_message:
-            try:
-                amt = int(p[1])
-            except:
-                return
-            if amt <= 0: return
-            if user_balances.get(uid, 0) < amt:
-                await message.reply("❌ Недостаточно")
-                return
-            t = message.reply_to_message.from_user
-            if t.id == uid:
-                await message.reply("❌ Нельзя себе")
-                return
-            user_balances[uid] -= amt
-            user_balances[t.id] = user_balances.get(t.id, 0) + amt
-            await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
+                n = str(u)
+            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
+        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
-    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
-        await help_cmd(message)
+    if text.lower() in ["помощь", "команды", "help"]:
+        await message.reply(
+            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
+            "Много: 1000 14 23-34 к 0\n\n"
+            "💣 МИНЫ: мины 100\n"
+            "🃏 БЛЭКДЖЕК: bj 100\n\n"
+            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+            "дать @user 1000 / дать всё (ответом)</code>",
+            parse_mode="HTML"
+        )
         return
 
     if text.lower() == "го":
@@ -557,4 +510,219 @@ async def handle(message: Message):
             await message.reply(f"❌ Нужно {format_amount(total)} GRAM")
             return
 
+        user_balances[uid] = bal - total
+
+        acc = []
+        for b in bets:
+            if not b: continue
+            pending_bets.append({"user_id": uid, "user_name": name, "amount": amt, "raw_bet": b})
+            acc.append(f"Ставка принята: {name} {format_amount(amt)} GRAM на {b}")
+
+        for i in range(0, len(acc), 20):
+            await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
+
+@dp.callback_query_handler(lambda c: c.data.startswith("bj_"))
+async def blackjack_callback(call: CallbackQuery):
+    await call.answer()
+    uid = call.from_user.id
+    
+    if uid not in blackjack_games:
+        await call.message.edit_text("❌ Игра не найдена")
+        return
+    
+    g = blackjack_games[uid]
+    if not g["active"]:
+        return
+    
+    action = call.data[3:]
+    
+    if action == "hit":
+        g["player_hand"].append(g["deck"].pop())
+        player_val = hand_value(g["player_hand"])
         
+        if player_val > 21:
+            g["active"] = False
+            del blackjack_games[uid]
+            
+            if uid not in user_stats:
+                user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+            user_stats[uid]["played"] += 1
+            user_stats[uid]["total_bet"] += g["bet"]
+            user_levels[uid] = user_levels.get(uid, 0) + 1
+            
+            await call.message.edit_text(
+                f"<code>🃏 ПЕРЕБОР! ({player_val})\n\n"
+                f"Ваши карты: {format_cards(g['player_hand'])}\n"
+                f"Карты дилера: {format_cards(g['dealer_hand'])} ({hand_value(g['dealer_hand'])})\n\n"
+                f"❌ Вы проиграли {format_amount(g['bet'])} GRAM</code>",
+                parse_mode="HTML"
+            )
+            return
+        
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            InlineKeyboardButton("🃏 Взять", callback_data="bj_hit"),
+            InlineKeyboardButton("✋ Хватит", callback_data="bj_stand")
+        )
+        
+        dealer_up = g["dealer_hand"][0]
+        await call.message.edit_text(
+            f"<code>🃏 БЛЭКДЖЕК\n"
+            f"💰 Ставка: {format_amount(g['bet'])} GRAM\n\n"
+            f"Ваши карты: {format_cards(g['player_hand'])} ({player_val})\n"
+            f"Карта дилера: {format_cards([dealer_up])}</code>",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    
+    elif action == "stand":
+        g["active"] = False
+        
+        while hand_value(g["dealer_hand"]) < 17:
+            g["dealer_hand"].append(g["deck"].pop())
+        
+        player_val = hand_value(g["player_hand"])
+        dealer_val = hand_value(g["dealer_hand"])
+        
+        win = 0
+        result_text = ""
+        
+        if dealer_val > 21:
+            win = g["bet"] * 2
+            result_text = "🎉 ДИЛЕР ПЕРЕБРАЛ! ВЫ ВЫИГРАЛИ!"
+            won = True
+        elif player_val > dealer_val:
+            win = g["bet"] * 2
+            result_text = "🎉 ВЫ ВЫИГРАЛИ!"
+            won = True
+        elif player_val == dealer_val:
+            win = g["bet"]
+            result_text = "🤝 НИЧЬЯ! СТАВКА ВОЗВРАЩЕНА"
+            won = False
+        else:
+            result_text = "😞 ДИЛЕР ВЫИГРАЛ"
+            won = False
+        
+        if win > 0:
+            user_balances[uid] = user_balances.get(uid, 0) + win
+        
+        if uid not in user_stats:
+            user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+        user_stats[uid]["played"] += 1
+        if won:
+            user_stats[uid]["won"] += 1
+        user_stats[uid]["total_bet"] += g["bet"]
+        user_stats[uid]["total_win"] += win
+        user_levels[uid] = user_levels.get(uid, 0) + 1
+        
+        del blackjack_games[uid]
+        
+        await call.message.edit_text(
+            f"<code>🃏 ИГРА ОКОНЧЕНА\n\n"
+            f"Ваши карты: {format_cards(g['player_hand'])} ({player_val})\n"
+            f"Карты дилера: {format_cards(g['dealer_hand'])} ({dealer_val})\n\n"
+            f"{result_text}\n"
+            f"💰 {'+' if win > 0 else ''}{format_amount(win) if win > 0 else '0'} GRAM</code>",
+            parse_mode="HTML"
+        )
+    
+    elif action == "surrender":
+        g["active"] = False
+        
+        refund = g["bet"] // 2
+        user_balances[uid] = user_balances.get(uid, 0) + refund
+        
+        if uid not in user_stats:
+            user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+        user_stats[uid]["played"] += 1
+        user_stats[uid]["total_bet"] += g["bet"]
+        user_levels[uid] = user_levels.get(uid, 0) + 1
+        
+        del blackjack_games[uid]
+        
+        await call.message.edit_text(
+            f"<code>🏳️ ВЫ СДАЛИСЬ\n\n"
+            f"Ваши карты: {format_cards(g['player_hand'])} ({hand_value(g['player_hand'])})\n"
+            f"Карты дилера: {format_cards(g['dealer_hand'])} ({hand_value(g['dealer_hand'])})\n\n"
+            f"💰 Возвращено {format_amount(refund)} GRAM</code>",
+            parse_mode="HTML"
+        )
+
+@dp.callback_query_handler(lambda c: c.data.startswith("m_"))
+async def mine_click(call: CallbackQuery):
+    await call.answer()
+    uid = call.from_user.id
+
+    if uid not in mines_games:
+        return
+
+    g = mines_games[uid]
+    if not g["active"]:
+        return
+
+    parts = call.data.split("_")
+    row, col = int(parts[1]), int(parts[2])
+
+    if (row, col) in g["revealed"]:
+        return
+
+    g["revealed"].append((row, col))
+    cell = g["field"][row][col]
+
+    if cell == "💣":
+        g["active"] = False
+        del mines_games[uid]
+        await call.message.edit_text(
+            f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
+            f"{format_mines_field(g['field'], g['revealed'])}"
+        )
+        return
+
+    g["multiplier"] += 0.14
+    pot = int(g["bet"] * g["multiplier"])
+
+    kb = get_mines_keyboard(g["field"], g["revealed"])
+
+    await call.message.edit_text(
+        f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n"
+        f"📌 Ставка: {format_amount(g['bet'])} GRAM\n"
+        f"💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}",
+        reply_markup=kb
+    )
+
+@dp.callback_query_handler(lambda c: c.data == "cash")
+async def mine_cash(call: CallbackQuery):
+    await call.answer()
+    uid = call.from_user.id
+
+    if uid not in mines_games:
+        return
+
+    g = mines_games[uid]
+    if not g["active"]:
+        return
+
+    g["active"] = False
+    win = int(g["bet"] * g["multiplier"])
+    user_balances[uid] = user_balances.get(uid, 0) + win
+
+    if uid not in user_stats:
+        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+    user_stats[uid]["played"] += 1
+    user_stats[uid]["won"] += 1
+    user_stats[uid]["total_bet"] += g["bet"]
+    user_stats[uid]["total_win"] += win
+    user_levels[uid] = user_levels.get(uid, 0) + 1
+
+    del mines_games[uid]
+
+    await call.message.edit_text(
+        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
+        f"✅ +{format_amount(win)} GRAM\n"
+        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}"
+    )
+
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
