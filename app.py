@@ -28,8 +28,8 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-# ТВОЯ ГИФКА
-ROULETTE_GIF = "https://drive.google.com/uc?export=download&id=1S9DrcnA36xJ_nfPqDgH9h1ye7DYW-QBI"
+# ТВОЯ ССЫЛКА (как ты просил)
+ROULETTE_GIF = "https://drive.google.com/file/d/1Lbg63Of_SzSWs9PlFBCX4t4VAoNg_-6S/view?usp=drivesdk"
 
 pending_bets = []
 game_in_progress = False
