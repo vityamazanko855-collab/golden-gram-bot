@@ -549,4 +549,50 @@ async def blackjack_callback(call: CallbackQuery):
 
     action = call.data.replace("bj_", "")
 
-    if action == "hit"
+    if action == "hit":
+        g["player_hand"].append(g["deck"].pop())
+        player_value = hand_value(g["player_hand"])
+
+        if player_value > 21:
+            g["active"] = False
+            await call.message.edit_text(
+                f"💥 Перебор!\nТвоя рука: {format_hand(g['player_hand'])} ({player_value})\n❌ Ты проиграл"
+            )
+            del blackjack_games[uid]
+            return
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Взять", callback_data="bj_hit")
+        kb.button(text="🛑 Хватит", callback_data="bj_stand")
+        kb.adjust(2)
+
+        await call.message.edit_text(
+            f"🃏 БЛЭКДЖЕК\nТвоя рука: {format_hand(g['player_hand'])} ({player_value})\nДилер: {format_hand(g['dealer_hand'][:1])} ?",
+            reply_markup=kb.as_markup()
+        )
+
+    elif action == "stand":
+        g["active"] = False
+        player_value = hand_value(g["player_hand"])
+        dealer_hand = g["dealer_hand"]
+
+        while hand_value(dealer_hand) < 17:
+            dealer_hand.append(g["deck"].pop())
+
+        dealer_value = hand_value(dealer_hand)
+        bet = g["bet"]
+
+        if dealer_value > 21 or player_value > dealer_value:
+            result = "✅ Победа"
+        elif player_value == dealer_value:
+            result = "🤝 Ничья"
+        else:
+            result = "❌ Проигрыш"
+
+        await call.message.edit_text(
+            f"🃏 РЕЗУЛЬТАТ\n\n"
+            f"Твоя рука: {format_hand(g['player_hand'])} ({player_value})\n"
+            f"Дилер: {format_hand(dealer_hand)} ({dealer_value})\n\n{result}"
+        )
+
+        del blackjack_games[uid]
