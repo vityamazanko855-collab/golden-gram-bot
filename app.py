@@ -28,7 +28,7 @@ DAILY_BONUS_BASE = 500
 DAILY_BONUS_STREAK_MULTIPLIER = 200
 MAX_BETS_PER_MESSAGE = 500
 
-# ТВОЯ ССЫЛКА (как ты просил)
+# ГИФКА РУЛЕТКИ
 ROULETTE_GIF = "https://i.gifer.com/3P1d3.gif"
 
 pending_bets = []
