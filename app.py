@@ -730,14 +730,42 @@ async def handle_commands(message: types.Message):
     name = message.from_user.full_name or 'Игрок'
 
     if text == '/help':
-        await message.reply("Текст команды help...", parse_mode='HTML')
+        await message.reply(
+            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
+            "Много: 1000 14 23-34 к 0\n\n"
+            "💣 МИНЫ: мины 100\n"
+            "🃏 БЛЭКДЖЕК: bj 100\n\n"
+            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+            "дать @user 1000 / дать всё (ответом)</code>",
+            parse_mode="HTML"
+        )
 
     elif text == '/profile':
-        # код профиля
-        pass
+        bal = user_balances.get(uid, 0)
+        stats = user_stats.get(uid, {"played":0,"won":0,"total_bet":0,"total_win":0})
+        lvl = get_level(user_levels.get(uid,0))
+        winrate = (stats["won"]/stats["played"]*100) if stats["played"]>0 else 0
+        profit = stats["total_win"] - stats["total_bet"]
+        await message.reply(
+            f"<code>👤 {name}\n🆔 {uid}\n💰 {format_amount(bal)} GRAM\n"
+            f"Уровень: {lvl}\nИгр: {stats['played']}\nПобед: {stats['won']}\n"
+            f"Винрейт: {winrate:.1f}%\nПрофит: {format_amount(profit)} GRAM</code>",
+            parse_mode="HTML"
+        )
 
     elif text == '/top':
-        # код топа
-        pass
+        if not user_balances:
+            await message.reply("📊 Пусто")
+            return
+        sort = sorted(user_balances.items(), key=lambda x:x[1], reverse=True)[:10]
+        txt = "🏆 ТОП-10:\n\n"
+        for i,(u,b) in enumerate(sort,1):
+            try:
+                n = (await bot.get_chat(u)).full_name
+            except:
+                n = str(u)
+            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
+        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
