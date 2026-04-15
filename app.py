@@ -140,7 +140,7 @@ def format_mines_field(field, revealed):
     return "\n".join(lines)
 
 def generate_deck():
-    deck = [(rank, suit) for suit in SUITS for rank in RANKS]
+    deck = [(rank, suit) for rank in RANKS for suit in SUITS]
     random.shuffle(deck)
     return deck
 
@@ -183,6 +183,109 @@ def get_mines_keyboard(field, revealed):
         kb.add(InlineKeyboardButton("💰 Забрать выигрыш", callback_data="cash"))
     return kb
 
+# ==================== КОМАНДА ДАТЬ (ответом на сообщение) ====================
+@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать'))
+async def give_grams_reply(message: types.Message):
+    uid = message.from_user.id
+    text = message.text.strip()
+    
+    # Проверяем формат: дать 1000 (в ответ на сообщение)
+    parts = text.split()
+    if len(parts) != 2:
+        await message.reply("❌ Неправильный формат!\nИспользуйте: `дать 1000` в ответ на сообщение пользователя", parse_mode="HTML")
+        return
+    
+    try:
+        amount = int(parts[1])
+    except ValueError:
+        await message.reply("❌ Сумма должна быть числом\nПример: `дать 500`", parse_mode="HTML")
+        return
+    
+    if amount <= 0:
+        await message.reply("❌ Сумма должна быть больше 0")
+        return
+    
+    # Получаем получателя из ответного сообщения
+    target_id = message.reply_to_message.from_user.id
+    target_name = message.reply_to_message.from_user.full_name or "Пользователь"
+    
+    # Нельзя перевести самому себе
+    if uid == target_id:
+        await message.reply("❌ Нельзя перевести GRAM самому себе")
+        return
+    
+    # Проверяем баланс отправителя
+    sender_balance = user_balances.get(uid, 0)
+    if sender_balance < amount:
+        await message.reply(f"❌ Недостаточно GRAM! Ваш баланс: {format_amount(sender_balance)} GRAM")
+        return
+    
+    # Переводим средства
+    user_balances[uid] = sender_balance - amount
+    user_balances[target_id] = user_balances.get(target_id, 0) + amount
+    
+    await message.reply(
+        f"✅ Перевод выполнен!\n"
+        f"📤 Отправитель: {message.from_user.full_name}\n"
+        f"📥 Получатель: {target_name}\n"
+        f"💰 Сумма: {format_amount(amount)} GRAM\n\n"
+        f"💳 Ваш баланс: {format_amount(user_balances[uid])} GRAM"
+    )
+    
+    # Уведомляем получателя
+    try:
+        await bot.send_message(
+            target_id,
+            f"✅ Вам переведено {format_amount(amount)} GRAM от {message.from_user.full_name}\n"
+            f"💰 Ваш баланс: {format_amount(user_balances[target_id])} GRAM"
+        )
+    except:
+        pass
+
+# ==================== КОМАНДА ДАТЬ ВСЁ (ответом на сообщение) ====================
+@dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать всё'))
+async def give_all_grams_reply(message: types.Message):
+    uid = message.from_user.id
+    
+    # Получаем получателя из ответного сообщения
+    target_id = message.reply_to_message.from_user.id
+    target_name = message.reply_to_message.from_user.full_name or "Пользователь"
+    
+    # Нельзя перевести самому себе
+    if uid == target_id:
+        await message.reply("❌ Нельзя перевести GRAM самому себе")
+        return
+    
+    # Получаем баланс отправителя
+    sender_balance = user_balances.get(uid, 0)
+    
+    if sender_balance <= 0:
+        await message.reply(f"❌ У вас нет GRAM для перевода! Ваш баланс: {format_amount(sender_balance)} GRAM")
+        return
+    
+    amount = sender_balance
+    
+    # Переводим все средства
+    user_balances[uid] = 0
+    user_balances[target_id] = user_balances.get(target_id, 0) + amount
+    
+    await message.reply(
+        f"✅ Перевод ВСЕХ GRAM выполнен!\n"
+        f"📤 Отправитель: {message.from_user.full_name}\n"
+        f"📥 Получатель: {target_name}\n"
+        f"💰 Сумма: {format_amount(amount)} GRAM"
+    )
+    
+    # Уведомляем получателя
+    try:
+        await bot.send_message(
+            target_id,
+            f"✅ Вам переведены ВСЕ GRAM ({format_amount(amount)} GRAM) от {message.from_user.full_name}\n"
+            f"💰 Ваш баланс: {format_amount(user_balances[target_id])} GRAM"
+        )
+    except:
+        pass
+
 @dp.message_handler(Command("start"))
 async def start_cmd(message: Message):
     await message.reply(
@@ -192,7 +295,8 @@ async def start_cmd(message: Message):
         "💣 МИНЫ: мины 100\n"
         "🃏 БЛЭКДЖЕК: bj 100\n\n"
         "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-        "дать @user 1000 / дать всё (ответом)</code>",
+        "дать 500 (ответом на сообщение)\n"
+        "дать всё (ответом на сообщение)</code>",
         parse_mode="HTML"
     )
 
@@ -406,7 +510,8 @@ async def handle(message: Message):
             "💣 МИНЫ: мины 100\n"
             "🃏 БЛЭКДЖЕК: bj 100\n\n"
             "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-            "дать @user 1000 / дать всё (ответом)</code>",
+            "дать 500 (ответом на сообщение)\n"
+            "дать всё (ответом на сообщение)</code>",
             parse_mode="HTML"
         )
         return
@@ -586,6 +691,7 @@ async def blackjack_callback(call: CallbackQuery):
         
         win = 0
         result_text = ""
+        won = False
         
         if dealer_val > 21:
             win = g["bet"] * 2
@@ -723,49 +829,6 @@ async def mine_cash(call: CallbackQuery):
         f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
         f"{format_mines_field(g['field'], g['revealed'])}"
     )
-@dp.message_handler(lambda message: message.text)
-async def handle_commands(message: types.Message):
-    text = message.text.lower().split('@')[0]  # игнорируем @BotName
-    uid = message.from_user.id
-    name = message.from_user.full_name or 'Игрок'
 
-    if text == '/help':
-        await message.reply(
-            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
-            "Много: 1000 14 23-34 к 0\n\n"
-            "💣 МИНЫ: мины 100\n"
-            "🃏 БЛЭКДЖЕК: bj 100\n\n"
-            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-            "дать @user 1000 / дать всё (ответом)</code>",
-            parse_mode="HTML"
-        )
-
-    elif text == '/profile':
-        bal = user_balances.get(uid, 0)
-        stats = user_stats.get(uid, {"played":0,"won":0,"total_bet":0,"total_win":0})
-        lvl = get_level(user_levels.get(uid,0))
-        winrate = (stats["won"]/stats["played"]*100) if stats["played"]>0 else 0
-        profit = stats["total_win"] - stats["total_bet"]
-        await message.reply(
-            f"<code>👤 {name}\n🆔 {uid}\n💰 {format_amount(bal)} GRAM\n"
-            f"Уровень: {lvl}\nИгр: {stats['played']}\nПобед: {stats['won']}\n"
-            f"Винрейт: {winrate:.1f}%\nПрофит: {format_amount(profit)} GRAM</code>",
-            parse_mode="HTML"
-        )
-
-    elif text == '/top':
-        if not user_balances:
-            await message.reply("📊 Пусто")
-            return
-        sort = sorted(user_balances.items(), key=lambda x:x[1], reverse=True)[:10]
-        txt = "🏆 ТОП-10:\n\n"
-        for i,(u,b) in enumerate(sort,1):
-            try:
-                n = (await bot.get_chat(u)).full_name
-            except:
-                n = str(u)
-            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
-        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
