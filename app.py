@@ -723,6 +723,21 @@ async def mine_cash(call: CallbackQuery):
         f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
         f"{format_mines_field(g['field'], g['revealed'])}"
     )
+@dp.message_handler(lambda message: message.text)
+async def handle_commands(message: types.Message):
+    text = message.text.lower().split('@')[0]  # игнорируем @BotName
+    uid = message.from_user.id
+    name = message.from_user.full_name or 'Игрок'
 
+    if text == '/help':
+        await message.reply("Текст команды help...", parse_mode='HTML')
+
+    elif text == '/profile':
+        # код профиля
+        pass
+
+    elif text == '/top':
+        # код топа
+        pass
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
