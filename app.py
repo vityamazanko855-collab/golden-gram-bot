@@ -21,6 +21,7 @@ user_levels = {}
 daily_streak = {}
 game_history = []
 mines_games = {}
+blackjack_games = {}  # Для блэкджека
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
@@ -33,6 +34,10 @@ ROULETTE_GIF = "https://i.gifer.com/3P1d3.gif"
 pending_bets = []
 game_in_progress = False
 last_game_time = 0
+
+# Карты для блэкджека
+SUITS = ["♠", "♥", "♦", "♣"]
+RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
@@ -135,13 +140,66 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
+# ========== ФУНКЦИИ ДЛЯ БЛЭКДЖЕКА ==========
+def generate_deck():
+    deck = [(rank, suit) for suit in SUITS for rank in RANKS]
+    random.shuffle(deck)
+    return deck
+
+def card_value(card):
+    rank = card[0]
+    if rank in ["J", "Q", "K"]:
+        return 10
+    elif rank == "A":
+        return 11
+    else:
+        return int(rank)
+
+def hand_value(hand):
+    value = sum(card_value(c) for c in hand)
+    aces = sum(1 for c in hand if c[0] == "A")
+    while value > 21 and aces > 0:
+        value -= 10
+        aces -= 1
+    return value
+
+def format_cards(hand):
+    if not hand:
+        return "пусто"
+    card_symbols = {
+        "♠": "🂡", "♥": "🂱", "♦": "🃁", "♣": "🃑",
+    }
+    result = []
+    for rank, suit in hand:
+        if rank == "A":
+            base = {"♠": "🂡", "♥": "🂱", "♦": "🃁", "♣": "🃑"}[suit]
+        elif rank == "J":
+            base = {"♠": "🂫", "♥": "🂻", "♦": "🃋", "♣": "🃛"}[suit]
+        elif rank == "Q":
+            base = {"♠": "🂭", "♥": "🂽", "♦": "🃍", "♣": "🃝"}[suit]
+        elif rank == "K":
+            base = {"♠": "🂮", "♥": "🂾", "♦": "🃎", "♣": "🃞"}[suit]
+        else:
+            offset = int(rank) - 1
+            if suit == "♠":
+                base = chr(0x1F0A1 + offset)
+            elif suit == "♥":
+                base = chr(0x1F0B1 + offset)
+            elif suit == "♦":
+                base = chr(0x1F0C1 + offset)
+            else:  # ♣
+                base = chr(0x1F0D1 + offset)
+        result.append(f"{rank}{suit}")
+    return " ".join(result)
+
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КОМАНД ==========
 async def help_cmd(message: Message):
     await message.reply(
         "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
         "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
         "Много: 1000 14 23-34 к 0\n\n"
-        "💣 МИНЫ: мины 100\n\n"
+        "💣 МИНЫ: мины 100\n"
+        "🃏 БЛЭКДЖЕК: bj 100\n\n"
         "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
         "дать @user 1000 / дать всё (ответом)</code>",
         parse_mode="HTML"
@@ -213,6 +271,83 @@ async def handle(message: Message):
     name = message.from_user.full_name or "Игрок"
     text = message.text.strip()
     parts = text.split()
+
+    # ========== БЛЭКДЖЕК ==========
+    if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
+        try:
+            bet = int(parts[1])
+        except:
+            await message.reply("❌ Пример: bj 100")
+            return
+        if bet < 100:
+            await message.reply("❌ Минимальная ставка 100 GRAM")
+            return
+        bal = user_balances.get(uid, 0)
+        if bet > bal:
+            await message.reply("❌ Недостаточно GRAM")
+            return
+        
+        # Списываем ставку
+        user_balances[uid] = bal - bet
+        
+        # Создаём колоду и раздаём карты
+        deck = generate_deck()
+        player_hand = [deck.pop(), deck.pop()]
+        dealer_hand = [deck.pop(), deck.pop()]
+        
+        blackjack_games[uid] = {
+            "bet": bet,
+            "deck": deck,
+            "player_hand": player_hand,
+            "dealer_hand": dealer_hand,
+            "active": True,
+            "doubled": False
+        }
+        
+        player_val = hand_value(player_hand)
+        dealer_up = dealer_hand[0]
+        
+        # Проверка на мгновенный блэкджек
+        if player_val == 21:
+            # Игрок сразу выигрывает с x2.5
+            win = int(bet * 2.5)
+            user_balances[uid] = user_balances.get(uid, 0) + win
+            
+            if uid not in user_stats:
+                user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
+            user_stats[uid]["played"] += 1
+            user_stats[uid]["won"] += 1
+            user_stats[uid]["total_bet"] += bet
+            user_stats[uid]["total_win"] += win
+            user_levels[uid] = user_levels.get(uid, 0) + 2
+            
+            del blackjack_games[uid]
+            
+            await message.reply(
+                f"<code>🃏 БЛЭКДЖЕК!\n\n"
+                f"Ваши карты: {format_cards(player_hand)} ({player_val})\n"
+                f"Карты дилера: {format_cards(dealer_hand)} ({hand_value(dealer_hand)})\n\n"
+                f"🎉 ВЫ ВЫИГРАЛИ x2.5!\n"
+                f"💰 +{format_amount(win)} GRAM</code>",
+                parse_mode="HTML"
+            )
+            return
+        
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🃏 Взять", callback_data="bj_hit")
+        kb.button(text="✋ Хватит", callback_data="bj_stand")
+        kb.button(text="🏳️ Сдаюсь", callback_data="bj_surrender")
+        kb.adjust(3)
+        
+        await message.reply(
+            f"<code>🃏 БЛЭКДЖЕК\n"
+            f"💰 Ставка: {format_amount(bet)} GRAM\n\n"
+            f"Ваши карты: {format_cards(player_hand)} ({player_val})\n"
+            f"Карта дилера: {format_cards([dealer_up])}</code>",
+            parse_mode="HTML",
+            reply_markup=kb.as_markup()
+        )
+        return
 
     if text.lower().startswith("мины "):
         try:
@@ -414,144 +549,4 @@ async def handle(message: Message):
             await message.answer(f"<code>Рулетка: {win_num} {win_emoji}</code>", parse_mode="HTML")
             for i in range(0, len(all_bets), 50):
                 await message.answer("<code>" + "\n".join(all_bets[i:i+50]) + "</code>", parse_mode="HTML")
-            for i in range(0, len(win_res), 50):
-                await message.answer("<code>" + "\n".join(win_res[i:i+50]) + "</code>", parse_mode="HTML")
-
-        except Exception as e:
-            logging.error(f"Ошибка: {e}")
-            await message.answer("❌ Ошибка. Ставки возвращены")
-            for b in pending_bets:
-                user_balances[b["user_id"]] = user_balances.get(b["user_id"], 0) + b["amount"]
-
-        finally:
-            pending_bets.clear()
-            game_in_progress = False
-            last_game_time = int(time.time())
-        return
-
-    if len(parts) >= 2:
-        if game_in_progress:
-            await message.reply("⏳ Идёт игра")
-            return
-        try:
-            amt = int(parts[0])
-        except:
-            return
-        if amt <= 0:
-            await message.reply("❌ Ставка > 0")
-            return
-
-        bets = " ".join(parts[1:]).split()
-        if len(bets) > MAX_BETS_PER_MESSAGE:
-            await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок")
-            return
-
-        total = amt * len(bets)
-        bal = user_balances.get(uid, 0)
-        if total > bal:
-            await message.reply(f"❌ Нужно {format_amount(total)} GRAM")
-            return
-
-        user_balances[uid] = bal - total
-
-        acc = []
-        for b in bets:
-            if not b: continue
-            pending_bets.append({"user_id": uid, "user_name": name, "amount": amt, "raw_bet": b})
-            acc.append(f"Ставка принята: {name} {format_amount(amt)} GRAM на {b}")
-
-        for i in range(0, len(acc), 20):
-            await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
-
-@dp.callback_query(F.data.startswith("m_"))
-async def mine_click(call: CallbackQuery):
-    await call.answer()
-    uid = call.from_user.id
-
-    if uid not in mines_games:
-        return
-
-    g = mines_games[uid]
-    if not g["active"]:
-        return
-
-    parts = call.data.split("_")
-    row, col = int(parts[1]), int(parts[2])
-
-    if (row, col) in g["revealed"]:
-        return
-
-    g["revealed"].append((row, col))
-    cell = g["field"][row][col]
-
-    if cell == "💣":
-        g["active"] = False
-        del mines_games[uid]
-        await call.message.edit_text(
-            f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
-            f"{format_mines_field(g['field'], g['revealed'])}"
-        )
-        return
-
-    g["multiplier"] += 0.14
-    pot = int(g["bet"] * g["multiplier"])
-
-    kb = InlineKeyboardBuilder()
-    for i in range(5):
-        for j in range(5):
-            if (i, j) in g["revealed"]:
-                kb.button(text=g["field"][i][j], callback_data="done")
-            else:
-                kb.button(text="❓", callback_data=f"m_{i}_{j}")
-
-    if g["revealed"]:
-        kb.button(text="💰 Забрать выигрыш", callback_data="cash")
-
-    kb.adjust(5, 5, 5, 5, 5, 1) if g["revealed"] else kb.adjust(5, 5, 5, 5, 5)
-
-    await call.message.edit_text(
-        f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n"
-        f"📌 Ставка: {format_amount(g['bet'])} GRAM\n"
-        f"💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n"
-        f"{format_mines_field(g['field'], g['revealed'])}",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data == "cash")
-async def mine_cash(call: CallbackQuery):
-    await call.answer()
-    uid = call.from_user.id
-
-    if uid not in mines_games:
-        return
-
-    g = mines_games[uid]
-    if not g["active"]:
-        return
-
-    g["active"] = False
-    win = int(g["bet"] * g["multiplier"])
-    user_balances[uid] = user_balances.get(uid, 0) + win
-
-    if uid not in user_stats:
-        user_stats[uid] = {"played": 0, "won": 0, "total_bet": 0, "total_win": 0}
-    user_stats[uid]["played"] += 1
-    user_stats[uid]["won"] += 1
-    user_stats[uid]["total_bet"] += g["bet"]
-    user_stats[uid]["total_win"] += win
-    user_levels[uid] = user_levels.get(uid, 0) + 1
-
-    del mines_games[uid]
-
-    await call.message.edit_text(
-        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
-        f"✅ +{format_amount(win)} GRAM\n"
-        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
-        f"{format_mines_field(g['field'], g['revealed'])}"
-    )
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            for i in range(0, len(win_res), 50
