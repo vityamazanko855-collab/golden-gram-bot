@@ -57,8 +57,15 @@ def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+user_balances = {}
+user_stats = {}
+user_levels = {}
+daily_streak = {}
+game_history = []
+mines_games = {}
+blackjack_games = {}
+
 # ==================== ЕЖЕДНЕВНЫЕ ЗАДАНИЯ ====================
-# Инициализация структуры заданий
 def init_quests():
     global daily_quests
     if not daily_quests:
@@ -135,7 +142,7 @@ def update_quest_progress(uid: int, quest_id: str, increment: int = 1):
         daily_quests[quest_id]["completed"][uid] = True
         daily_quests[quest_id]["last_notify"][uid] = True
         
-        save_data()  # Сохраняем сразу после начисления
+        save_data()
         return reward
     
     return 0
@@ -338,7 +345,7 @@ def get_main_keyboard():
     )
     return kb
 
-# ==================== КОМАНДА ДАТЬ ВСЁ (ответом на сообщение) ====================
+# ==================== КОМАНДА ДАТЬ ВСЁ ====================
 @dp.message_handler(lambda message: message.reply_to_message and message.text.lower().strip() == 'дать всё')
 async def give_all_grams_reply(message: types.Message):
     uid = message.from_user.id
@@ -378,7 +385,7 @@ async def give_all_grams_reply(message: types.Message):
     except:
         pass
 
-# ==================== КОМАНДА ДАТЬ (ответом на сообщение) ====================
+# ==================== КОМАНДА ДАТЬ ====================
 @dp.message_handler(lambda message: message.reply_to_message and message.text.lower().startswith('дать') and not message.text.lower().startswith('дать всё'))
 async def give_grams_reply(message: types.Message):
     uid = message.from_user.id
@@ -432,7 +439,7 @@ async def give_grams_reply(message: types.Message):
     except:
         pass
 
-# ==================== ОБРАБОТЧИКИ КОМАНД (РАБОТАЮТ И С @bot) ====================
+# ==================== ОБРАБОТЧИКИ КОМАНД ====================
 @dp.message_handler(commands=["start"])
 async def start_cmd(message: Message):
     init_quests()
@@ -468,7 +475,6 @@ async def add_grams(message: Message):
     save_data()
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-# Команда профиль
 @dp.message_handler(lambda message: clean_command(message.text) in ['/profile', '/профиль'])
 async def profile_cmd(message: Message):
     uid = message.from_user.id
@@ -487,7 +493,6 @@ async def profile_cmd(message: Message):
         reply_markup=get_main_keyboard()
     )
 
-# Команда топ
 @dp.message_handler(lambda message: clean_command(message.text) == '/top')
 async def top_cmd(message: Message):
     if not user_balances:
@@ -504,7 +509,6 @@ async def top_cmd(message: Message):
         txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
     await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
 
-# Команда задания
 @dp.message_handler(lambda message: clean_command(message.text) in ['/quests', '/задания'])
 async def quests_cmd(message: Message):
     uid = message.from_user.id
@@ -516,7 +520,6 @@ async def quests_cmd(message: Message):
         reply_markup=get_main_keyboard()
     )
 
-# Команда помощь
 @dp.message_handler(lambda message: clean_command(message.text) in ['/help', '/помощь'])
 async def help_cmd(message: Message):
     await message.reply(
@@ -532,7 +535,6 @@ async def help_cmd(message: Message):
         reply_markup=get_main_keyboard()
     )
 
-# Команда бонус
 @dp.message_handler(lambda message: clean_command(message.text) == '/bonus')
 async def bonus_cmd(message: Message):
     uid = message.from_user.id
@@ -656,9 +658,8 @@ async def menu_callback(call: CallbackQuery):
             reply_markup=get_main_keyboard()
         )
 
-# ==================== ФУНКЦИЯ ДЛЯ ОТПРАВКИ УВЕДОМЛЕНИЯ О ВЫПОЛНЕНИИ ЗАДАНИЯ ====================
+# ==================== ФУНКЦИЯ ДЛЯ ОТПРАВКИ УВЕДОМЛЕНИЯ ====================
 async def send_quest_complete_notification(uid: int, quest_id: str, reward: int, message_obj=None):
-    """Отправляет уведомление о выполнении задания"""
     quest_name = daily_quests[quest_id]["name"]
     new_balance = user_balances.get(uid, 0)
     text = (
@@ -686,7 +687,7 @@ async def handle(message: Message):
     name = message.from_user.full_name or "Игрок"
     text = message.text.strip()
     
-    # Пропускаем команды, которые уже обработаны
+    # Пропускаем команды
     if text.lower().startswith('/'):
         return
     
@@ -694,21 +695,34 @@ async def handle(message: Message):
 
     # ==================== БЛЭКДЖЕК ====================
     if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
+        if len(parts) < 2:
+            await message.reply("❌ Пример: bj 100")
+            return
         try:
             bet = int(parts[1])
         except:
             await message.reply("❌ Пример: bj 100")
             return
+        
         if bet < 100:
             await message.reply("❌ Минимальная ставка 100 GRAM")
             return
+        
         bal = user_balances.get(uid, 0)
         if bet > bal:
             await message.reply("❌ Недостаточно GRAM")
             return
         
+        # Снимаем ставку
         user_balances[uid] = bal - bet
         
+        # Обновляем задание "сделать ставку" ТОЛЬКО если ставка >= 100
+        if bet >= 100:
+            reward = update_quest_progress(uid, "make_bet")
+            if reward > 0:
+                await send_quest_complete_notification(uid, "make_bet", reward, message)
+        
+        # Создаём игру
         deck = generate_deck()
         player_hand = [deck.pop(), deck.pop()]
         dealer_hand = [deck.pop(), deck.pop()]
@@ -724,11 +738,7 @@ async def handle(message: Message):
         player_val = hand_value(player_hand)
         dealer_up = dealer_hand[0]
         
-        # Обновляем задания для ставки
-        reward_make_bet = update_quest_progress(uid, "make_bet")
-        if reward_make_bet > 0:
-            await send_quest_complete_notification(uid, "make_bet", reward_make_bet, message)
-        
+        # Проверка на блэкджек
         if player_val == 21:
             win = int(bet * 2.5)
             user_balances[uid] = user_balances.get(uid, 0) + win
@@ -741,11 +751,12 @@ async def handle(message: Message):
             user_stats[uid]["total_win"] += win
             user_levels[uid] = user_levels.get(uid, 0) + 2
             
-            # Обновляем задания для игр и побед подряд
+            # Обновляем задание "сыграть 3 игры"
             reward_play = update_quest_progress(uid, "play_3_games")
             if reward_play > 0:
                 await send_quest_complete_notification(uid, "play_3_games", reward_play, message)
             
+            # Обновляем streak побед
             if uid not in daily_quests["win_3_streak"]["current_streak"]:
                 daily_quests["win_3_streak"]["current_streak"][uid] = 0
             daily_quests["win_3_streak"]["current_streak"][uid] += 1
@@ -766,6 +777,7 @@ async def handle(message: Message):
             )
             return
         
+        # Обычная игра
         kb = InlineKeyboardMarkup(row_width=3)
         kb.add(
             InlineKeyboardButton("🃏 Взять", callback_data="bj_hit"),
@@ -785,26 +797,34 @@ async def handle(message: Message):
 
     # ==================== МИНЫ ====================
     if text.lower().startswith("мины "):
+        if len(parts) < 2:
+            await message.reply("❌ Пример: мины 100")
+            return
         try:
             bet = int(parts[1])
         except:
             await message.reply("❌ Пример: мины 100")
             return
-        if bet <= 0:
-            await message.reply("❌ Ставка > 0")
+        
+        if bet < 100:
+            await message.reply("❌ Минимальная ставка 100 GRAM")
             return
+        
         bal = user_balances.get(uid, 0)
         if bet > bal:
             await message.reply("❌ Недостаточно GRAM")
             return
         
+        # Снимаем ставку
         user_balances[uid] = bal - bet
         
-        # Обновляем задания для ставки
-        reward_make_bet = update_quest_progress(uid, "make_bet")
-        if reward_make_bet > 0:
-            await send_quest_complete_notification(uid, "make_bet", reward_make_bet, message)
+        # Обновляем задание "сделать ставку" ТОЛЬКО если ставка >= 100
+        if bet >= 100:
+            reward = update_quest_progress(uid, "make_bet")
+            if reward > 0:
+                await send_quest_complete_notification(uid, "make_bet", reward, message)
         
+        # Создаём поле мин
         field = generate_mines_field()
         mines_games[uid] = {"bet": bet, "field": field, "revealed": [], "multiplier": 1.0, "active": True}
         save_data()
@@ -983,14 +1003,14 @@ async def handle(message: Message):
                     user_stats[b["user_id"]]["total_win"] += win_amt
                     user_levels[b["user_id"]] = user_levels.get(b["user_id"], 0) + 1
                     
-                    # Обновляем прогресс выигрышей подряд
+                    # Обновляем streak побед
                     uid_bet = b["user_id"]
                     if uid_bet not in daily_quests["win_3_streak"]["current_streak"]:
                         daily_quests["win_3_streak"]["current_streak"][uid_bet] = 0
                     daily_quests["win_3_streak"]["current_streak"][uid_bet] += 1
-                    reward = update_quest_progress(uid_bet, "win_3_streak", daily_quests["win_3_streak"]["current_streak"][uid_bet])
-                    if reward > 0:
-                        await send_quest_complete_notification(uid_bet, "win_3_streak", reward, message)
+                    reward_streak = update_quest_progress(uid_bet, "win_3_streak", daily_quests["win_3_streak"]["current_streak"][uid_bet])
+                    if reward_streak > 0:
+                        await send_quest_complete_notification(uid_bet, "win_3_streak", reward_streak, message)
 
                     win_res.append(f"{uname} ставка {format_amount(amt)} GRAM выиграл {format_amount(win_amt)} на {raw}")
                 else:
@@ -1003,7 +1023,7 @@ async def handle(message: Message):
                     # Сбрасываем streak при проигрыше
                     daily_quests["win_3_streak"]["current_streak"][b["user_id"]] = 0
                 
-                # Обновляем задания для игр
+                # Обновляем задание "сыграть 3 игры"
                 reward_play = update_quest_progress(b["user_id"], "play_3_games")
                 if reward_play > 0:
                     await send_quest_complete_notification(b["user_id"], "play_3_games", reward_play, message)
@@ -1038,8 +1058,9 @@ async def handle(message: Message):
             amt = int(parts[0])
         except:
             return
-        if amt <= 0:
-            await message.reply("❌ Ставка > 0")
+        
+        if amt < 100:
+            await message.reply("❌ Минимальная ставка 100 GRAM")
             return
 
         bets = " ".join(parts[1:]).split()
@@ -1053,10 +1074,11 @@ async def handle(message: Message):
             await message.reply(f"❌ Нужно {format_amount(total)} GRAM")
             return
 
-        # Обновляем задания
-        reward_make_bet = update_quest_progress(uid, "make_bet")
-        if reward_make_bet > 0:
-            await send_quest_complete_notification(uid, "make_bet", reward_make_bet, message)
+        # Обновляем задание "сделать ставку" ТОЛЬКО если ставка >= 100
+        if amt >= 100:
+            reward = update_quest_progress(uid, "make_bet")
+            if reward > 0:
+                await send_quest_complete_notification(uid, "make_bet", reward, message)
 
         user_balances[uid] = bal - total
         save_data()
@@ -1070,7 +1092,7 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ==================== КОЛБЭКИ ====================
+# ==================== КОЛБЭКИ БЛЭКДЖЕКА ====================
 @dp.callback_query_handler(lambda c: c.data.startswith("bj_"))
 async def blackjack_callback(call: CallbackQuery):
     await call.answer()
@@ -1100,12 +1122,12 @@ async def blackjack_callback(call: CallbackQuery):
             user_stats[uid]["total_bet"] += g["bet"]
             user_levels[uid] = user_levels.get(uid, 0) + 1
             
-            # Обновляем задания
+            # Обновляем задание "сыграть 3 игры"
             reward_play = update_quest_progress(uid, "play_3_games")
             if reward_play > 0:
                 await send_quest_complete_notification(uid, "play_3_games", reward_play, call.message)
             
-            # Сбрасываем streak при проигрыше
+            # Сбрасываем streak
             daily_quests["win_3_streak"]["current_streak"][uid] = 0
             save_data()
             
@@ -1171,7 +1193,7 @@ async def blackjack_callback(call: CallbackQuery):
         user_stats[uid]["played"] += 1
         if won:
             user_stats[uid]["won"] += 1
-            # Обновляем прогресс выигрышей подряд
+            # Обновляем streak побед
             if uid not in daily_quests["win_3_streak"]["current_streak"]:
                 daily_quests["win_3_streak"]["current_streak"][uid] = 0
             daily_quests["win_3_streak"]["current_streak"][uid] += 1
@@ -1181,7 +1203,7 @@ async def blackjack_callback(call: CallbackQuery):
         else:
             daily_quests["win_3_streak"]["current_streak"][uid] = 0
             
-        # Обновляем задания для игр
+        # Обновляем задание "сыграть 3 игры"
         reward_play = update_quest_progress(uid, "play_3_games")
         if reward_play > 0:
             await send_quest_complete_notification(uid, "play_3_games", reward_play, call.message)
@@ -1214,7 +1236,7 @@ async def blackjack_callback(call: CallbackQuery):
         user_stats[uid]["total_bet"] += g["bet"]
         user_levels[uid] = user_levels.get(uid, 0) + 1
         
-        # Обновляем задания
+        # Обновляем задание "сыграть 3 игры"
         reward_play = update_quest_progress(uid, "play_3_games")
         if reward_play > 0:
             await send_quest_complete_notification(uid, "play_3_games", reward_play, call.message)
@@ -1230,12 +1252,14 @@ async def blackjack_callback(call: CallbackQuery):
             parse_mode="HTML"
         )
 
+# ==================== КОЛБЭКИ МИН ====================
 @dp.callback_query_handler(lambda c: c.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
 
     if uid not in mines_games:
+        await call.message.edit_text("❌ Игра не найдена")
         return
 
     g = mines_games[uid]
@@ -1254,6 +1278,16 @@ async def mine_click(call: CallbackQuery):
     if cell == "💣":
         g["active"] = False
         del mines_games[uid]
+        
+        # Обновляем задание "сыграть 3 игры" (проигрыш тоже считается игрой)
+        reward_play = update_quest_progress(uid, "play_3_games")
+        if reward_play > 0:
+            await send_quest_complete_notification(uid, "play_3_games", reward_play, call.message)
+        
+        # Сбрасываем streak побед
+        daily_quests["win_3_streak"]["current_streak"][uid] = 0
+        save_data()
+        
         await call.message.edit_text(
             f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
             f"{format_mines_field(g['field'], g['revealed'])}"
@@ -1279,6 +1313,7 @@ async def mine_cash(call: CallbackQuery):
     uid = call.from_user.id
 
     if uid not in mines_games:
+        await call.message.edit_text("❌ Игра не найдена")
         return
 
     g = mines_games[uid]
@@ -1297,12 +1332,12 @@ async def mine_cash(call: CallbackQuery):
     user_stats[uid]["total_win"] += win
     user_levels[uid] = user_levels.get(uid, 0) + 1
     
-    # Обновляем задания
+    # Обновляем задание "сыграть 3 игры"
     reward_play = update_quest_progress(uid, "play_3_games")
     if reward_play > 0:
         await send_quest_complete_notification(uid, "play_3_games", reward_play, call.message)
     
-    # Обновляем прогресс выигрышей подряд
+    # Обновляем streak побед
     if uid not in daily_quests["win_3_streak"]["current_streak"]:
         daily_quests["win_3_streak"]["current_streak"][uid] = 0
     daily_quests["win_3_streak"]["current_streak"][uid] += 1
