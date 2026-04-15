@@ -21,7 +21,7 @@ user_levels = {}
 daily_streak = {}
 game_history = []
 mines_games = {}
-blackjack_games = {}  # Для блэкджека
+blackjack_games = {}
 
 ADMIN_ID = 6003768110
 GAME_COOLDOWN = 15
@@ -35,7 +35,6 @@ pending_bets = []
 game_in_progress = False
 last_game_time = 0
 
-# Карты для блэкджека
 SUITS = ["♠", "♥", "♦", "♣"]
 RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 
@@ -140,7 +139,6 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
-# ========== ФУНКЦИИ ДЛЯ БЛЭКДЖЕКА ==========
 def generate_deck():
     deck = [(rank, suit) for suit in SUITS for rank in RANKS]
     random.shuffle(deck)
@@ -166,33 +164,11 @@ def hand_value(hand):
 def format_cards(hand):
     if not hand:
         return "пусто"
-    card_symbols = {
-        "♠": "🂡", "♥": "🂱", "♦": "🃁", "♣": "🃑",
-    }
     result = []
     for rank, suit in hand:
-        if rank == "A":
-            base = {"♠": "🂡", "♥": "🂱", "♦": "🃁", "♣": "🃑"}[suit]
-        elif rank == "J":
-            base = {"♠": "🂫", "♥": "🂻", "♦": "🃋", "♣": "🃛"}[suit]
-        elif rank == "Q":
-            base = {"♠": "🂭", "♥": "🂽", "♦": "🃍", "♣": "🃝"}[suit]
-        elif rank == "K":
-            base = {"♠": "🂮", "♥": "🂾", "♦": "🃎", "♣": "🃞"}[suit]
-        else:
-            offset = int(rank) - 1
-            if suit == "♠":
-                base = chr(0x1F0A1 + offset)
-            elif suit == "♥":
-                base = chr(0x1F0B1 + offset)
-            elif suit == "♦":
-                base = chr(0x1F0C1 + offset)
-            else:  # ♣
-                base = chr(0x1F0D1 + offset)
         result.append(f"{rank}{suit}")
     return " ".join(result)
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КОМАНД ==========
 async def help_cmd(message: Message):
     await message.reply(
         "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
@@ -235,7 +211,6 @@ async def profile_cmd(message: Message):
         f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
     )
 
-# ========== ОБРАБОТЧИК КОМАНД С УПОМИНАНИЕМ БОТА ==========
 @dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
 async def handle_mentioned_commands(message: Message):
     text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
@@ -272,7 +247,6 @@ async def handle(message: Message):
     text = message.text.strip()
     parts = text.split()
 
-    # ========== БЛЭКДЖЕК ==========
     if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
         try:
             bet = int(parts[1])
@@ -287,10 +261,8 @@ async def handle(message: Message):
             await message.reply("❌ Недостаточно GRAM")
             return
         
-        # Списываем ставку
         user_balances[uid] = bal - bet
         
-        # Создаём колоду и раздаём карты
         deck = generate_deck()
         player_hand = [deck.pop(), deck.pop()]
         dealer_hand = [deck.pop(), deck.pop()]
@@ -307,9 +279,7 @@ async def handle(message: Message):
         player_val = hand_value(player_hand)
         dealer_up = dealer_hand[0]
         
-        # Проверка на мгновенный блэкджек
         if player_val == 21:
-            # Игрок сразу выигрывает с x2.5
             win = int(bet * 2.5)
             user_balances[uid] = user_balances.get(uid, 0) + win
             
@@ -550,3 +520,41 @@ async def handle(message: Message):
             for i in range(0, len(all_bets), 50):
                 await message.answer("<code>" + "\n".join(all_bets[i:i+50]) + "</code>", parse_mode="HTML")
             for i in range(0, len(win_res), 50):
+                await message.answer("<code>" + "\n".join(win_res[i:i+50]) + "</code>", parse_mode="HTML")
+
+        except Exception as e:
+            logging.error(f"Ошибка: {e}")
+            await message.answer("❌ Ошибка. Ставки возвращены")
+            for b in pending_bets:
+                user_balances[b["user_id"]] = user_balances.get(b["user_id"], 0) + b["amount"]
+
+        finally:
+            pending_bets.clear()
+            game_in_progress = False
+            last_game_time = int(time.time())
+        return
+
+    if len(parts) >= 2:
+        if game_in_progress:
+            await message.reply("⏳ Идёт игра")
+            return
+        try:
+            amt = int(parts[0])
+        except:
+            return
+        if amt <= 0:
+            await message.reply("❌ Ставка > 0")
+            return
+
+        bets = " ".join(parts[1:]).split()
+        if len(bets) > MAX_BETS_PER_MESSAGE:
+            await message.reply(f"❌ Максимум {MAX_BETS_PER_MESSAGE} ставок")
+            return
+
+        total = amt * len(bets)
+        bal = user_balances.get(uid, 0)
+        if total > bal:
+            await message.reply(f"❌ Нужно {format_amount(total)} GRAM")
+            return
+
+        
