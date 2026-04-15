@@ -135,67 +135,6 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-async def top_cmd(message: Message):
-    if not user_balances:
-        await message.reply("📊 Пусто")
-        return
-    sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
-    txt = "🏆 ТОП-10:\n\n"
-    for i, (u, b) in enumerate(sort, 1):
-        try:
-            u = await bot.get_chat(u)
-            n = u.full_name
-        except:
-            n = str(u)
-        txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
-    await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
-
-async def profile_cmd(message: Message):
-    uid = message.from_user.id
-    name = message.from_user.full_name or "Игрок"
-    bal = user_balances.get(uid, 0)
-    stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
-    exp = user_levels.get(uid, 0)
-    lvl = get_level(exp)
-    winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
-    profit = stats["total_win"] - stats["total_bet"]
-    await message.reply(
-        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
-        f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
-        f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
-    )
-
-async def help_cmd(message: Message):
-    await message.reply(
-        "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-        "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
-        "Много: 1000 14 23-34 к 0\n\n"
-        "💣 МИНЫ: мины 100\n\n"
-        "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-        "дать @user 1000 / дать всё (ответом)</code>",
-        parse_mode="HTML"
-    )
-
-# ========== ОБРАБОТЧИКИ КОМАНД (ПРАВИЛЬНЫЙ ПОРЯДОК) ==========
-
-# 1. Чистые команды через /
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await help_cmd(message)
-
-@dp.message(Command("help"))
-async def cmd_help(message: Message):
-    await help_cmd(message)
-
-@dp.message(Command("top"))
-async def cmd_top(message: Message):
-    await top_cmd(message)
-
-@dp.message(Command("profile"))
-async def cmd_profile(message: Message):
-    await profile_cmd(message)
-
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -213,20 +152,6 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-# 2. Текстовые команды (помощь, топ, профиль)
-@dp.message(F.text.in_({"помощь", "команды", "help"}))
-async def text_help(message: Message):
-    await help_cmd(message)
-
-@dp.message(F.text.in_({"топ"}))
-async def text_top(message: Message):
-    await top_cmd(message)
-
-@dp.message(F.text.in_({"профиль", "profile"}))
-async def text_profile(message: Message):
-    await profile_cmd(message)
-
-# 3. Общий обработчик (всегда последний)
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -282,6 +207,20 @@ async def handle(message: Message):
         await message.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
         return
 
+    if text.lower() in ["профиль", "profile"]:
+        bal = user_balances.get(uid, 0)
+        stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
+        exp = user_levels.get(uid, 0)
+        lvl = get_level(exp)
+        winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
+        profit = stats["total_win"] - stats["total_bet"]
+        await message.reply(
+            f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
+            f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
+            f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
+        )
+        return
+
     if text.lower() == "бонус":
         now = int(time.time())
         ds = daily_streak.get(uid, {"last": 0, "streak": 0})
@@ -312,6 +251,22 @@ async def handle(message: Message):
         log_lines = [entry for entry in game_history[-10:]]
         log_text = "\n".join(log_lines)
         await message.reply(f"<code>{log_text}</code>", parse_mode="HTML")
+        return
+
+    if text.lower() == "топ":
+        if not user_balances:
+            await message.reply("📊 Пусто")
+            return
+        sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+        txt = "🏆 ТОП-10:\n\n"
+        for i, (u, b) in enumerate(sort, 1):
+            try:
+                u = await bot.get_chat(u)
+                n = u.full_name
+            except:
+                n = str(u)
+            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
+        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
     if text.lower().startswith("дать "):
@@ -361,6 +316,18 @@ async def handle(message: Message):
             user_balances[uid] -= amt
             user_balances[t.id] = user_balances.get(t.id, 0) + amt
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
+        return
+
+    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
+        await message.reply(
+            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
+            "Много: 1000 14 23-34 к 0\n\n"
+            "💣 МИНЫ: мины 100\n\n"
+            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+            "дать @user 1000 / дать всё (ответом)</code>",
+            parse_mode="HTML"
+        )
         return
 
     if text.lower() == "го":
@@ -473,7 +440,6 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-# ========== КНОПКИ МИН ==========
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -564,4 +530,5 @@ async def mine_cash(call: CallbackQuery):
 async def main():
     await dp.start_polling(bot)
 
-if __name__ =
+if __name__ == "__main__":
+    asyncio.run(main())
