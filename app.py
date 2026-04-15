@@ -218,7 +218,6 @@ async def handle(message: Message):
         dealer_up = dealer_hand[0]
 
         if player_value == 21:
-            # Мгновенный блэкджек
             win = int(bet * 2.5)
             user_balances[uid] = user_balances.get(uid, 0) + win
             await message.reply(
@@ -548,4 +547,6 @@ async def blackjack_callback(call: CallbackQuery):
     if not g["active"]:
         return
 
-    action = call.data.replace(
+    action = call.data.replace("bj_", "")
+
+    if action == "hit"
