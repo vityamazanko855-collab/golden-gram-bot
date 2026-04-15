@@ -177,12 +177,24 @@ async def help_cmd(message: Message):
         parse_mode="HTML"
     )
 
-# ========== ОБРАБОТЧИКИ КОМАНД (В ПРАВИЛЬНОМ ПОРЯДКЕ) ==========
+# ========== ОБРАБОТЧИКИ КОМАНД (ПРАВИЛЬНЫЙ ПОРЯДОК) ==========
 
-# 1. Команды через /
+# 1. Чистые команды через /
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await help_cmd(message)
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    await help_cmd(message)
+
+@dp.message(Command("top"))
+async def cmd_top(message: Message):
+    await top_cmd(message)
+
+@dp.message(Command("profile"))
+async def cmd_profile(message: Message):
+    await profile_cmd(message)
 
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
@@ -201,31 +213,20 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-# 2. Встроенные команды с @ бота
-@dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
-async def handle_mentioned_commands(message: Message):
-    text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
-    if text == "/top":
-        await top_cmd(message)
-    elif text == "/profile":
-        await profile_cmd(message)
-    elif text in ["/help", "/start"]:
-        await help_cmd(message)
-
-# 3. Текстовые команды (помощь, топ, профиль)
-@dp.message(F.text.in_({"помощь", "команды", "help", "/help"}))
+# 2. Текстовые команды (помощь, топ, профиль)
+@dp.message(F.text.in_({"помощь", "команды", "help"}))
 async def text_help(message: Message):
     await help_cmd(message)
 
-@dp.message(F.text.in_({"топ", "/top"}))
+@dp.message(F.text.in_({"топ"}))
 async def text_top(message: Message):
     await top_cmd(message)
 
-@dp.message(F.text.in_({"профиль", "profile", "/profile"}))
+@dp.message(F.text.in_({"профиль", "profile"}))
 async def text_profile(message: Message):
     await profile_cmd(message)
 
-# 4. Общий обработчик (всегда последний)
+# 3. Общий обработчик (всегда последний)
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -556,4 +557,11 @@ async def mine_cash(call: CallbackQuery):
     await call.message.edit_text(
         f"💰 {call.from_user.full_name} забрал выигрыш!\n"
         f"✅ +{format_amount(win)} GRAM\n"
-        f"💲 Итоговый множитель: x{g['multiplier']:.2
+        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}"
+    )
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ =
