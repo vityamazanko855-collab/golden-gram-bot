@@ -34,11 +34,8 @@ pending_bets = []
 game_in_progress = False
 last_game_time = 0
 
-# Клавиатура с кнопками внизу
 def get_main_keyboard():
-    kb = [
-        [KeyboardButton(text="📖 Помощь"), KeyboardButton(text="🏆 Топ"), KeyboardButton(text="👤 Профиль")]
-    ]
+    kb = [[KeyboardButton(text="📖 Помощь"), KeyboardButton(text="🏆 Топ"), KeyboardButton(text="👤 Профиль")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def format_amount(amount: int) -> str:
@@ -145,9 +142,7 @@ def format_mines_field(field, revealed):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "🎰 GOLDEN GRAM ROULETTE\n\n"
-        "Используй кнопки внизу или пиши команды:\n"
-        "• 100 красное\n• 250 чёрное\n• 500 14\n• мины 100\n• го",
+        "🎰 GOLDEN GRAM ROULETTE\n\nИспользуй кнопки внизу или пиши команды:\n• 100 красное\n• 250 чёрное\n• 500 14\n• мины 100\n• го",
         reply_markup=get_main_keyboard()
     )
 
@@ -171,12 +166,7 @@ async def add_grams(message: Message):
 @dp.message(F.text.in_({"📖 Помощь", "помощь", "команды", "help"}))
 async def help_cmd(message: Message):
     await message.reply(
-        "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-        "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
-        "Много: 1000 14 23-34 к 0\n\n"
-        "💣 МИНЫ: мины 100\n\n"
-        "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-        "дать @user 1000 / дать всё (ответом)</code>",
+        "<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\nМного: 1000 14 23-34 к 0\n\n💣 МИНЫ: мины 100\n\n🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\nдать @user 1000 / дать всё (ответом)</code>",
         parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
@@ -208,9 +198,7 @@ async def profile_cmd(message: Message):
     winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
     profit = stats["total_win"] - stats["total_bet"]
     await message.reply(
-        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
-        f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
-        f"📊 Профит: {format_amount(profit)} GRAM</code>",
+        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n📊 Профит: {format_amount(profit)} GRAM</code>",
         parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
@@ -248,10 +236,7 @@ async def handle(message: Message):
         kb.adjust(5)
 
         await message.answer(
-            f"💎 {name}, вы начали игру минное поле!\n"
-            f"📌 Ставка: {format_amount(bet)} GRAM\n"
-            f"💲 Выигрыш: x1,0 | {format_amount(bet)} GRAM\n\n"
-            f"{format_mines_field(field, [])}",
+            f"💎 {name}, вы начали игру минное поле!\n📌 Ставка: {format_amount(bet)} GRAM\n💲 Выигрыш: x1,0 | {format_amount(bet)} GRAM\n\n{format_mines_field(field, [])}",
             reply_markup=kb.as_markup()
         )
         return
@@ -485,10 +470,7 @@ async def mine_click(call: CallbackQuery):
     if cell == "💣":
         g["active"] = False
         del mines_games[uid]
-        await call.message.edit_text(
-            f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n"
-            f"{format_mines_field(g['field'], g['revealed'])}"
-        )
+        await call.message.edit_text(f"💥 {call.from_user.full_name}, мина!\n❌ -{format_amount(g['bet'])} GRAM\n\n{format_mines_field(g['field'], g['revealed'])}")
         return
 
     g["multiplier"] += 0.14
@@ -508,9 +490,18 @@ async def mine_click(call: CallbackQuery):
     kb.adjust(5, 5, 5, 5, 5, 1) if g["revealed"] else kb.adjust(5, 5, 5, 5, 5)
 
     await call.message.edit_text(
-        f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n"
-        f"📌 Ставка: {format_amount(g['bet'])} GRAM\n"
-        f"💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n"
-        f"{format_mines_field(g['field'], g['revealed'])}",
+        f"💎 {call.from_user.full_name}, вы начали игру минное поле!\n📌 Ставка: {format_amount(g['bet'])} GRAM\n💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n{format_mines_field(g['field'], g['revealed'])}",
         reply_markup=kb.as_markup()
-            )
+    )
+
+@dp.callback_query(F.data == "cash")
+async def mine_cash(call: CallbackQuery):
+    await call.answer()
+    uid = call.from_user.id
+
+    if uid not in mines_games:
+        return
+
+    g = mines_games[uid]
+    if not g["active"]:
+        ret
