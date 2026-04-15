@@ -512,4 +512,5 @@ async def mine_click(call: CallbackQuery):
         f"📌 Ставка: {format_amount(g['bet'])} GRAM\n"
         f"💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GRAM\n\n"
         f"{format_mines_field(g['field'], g['revealed'])}",
-        reply_m
+        reply_markup=kb.as_markup()
+            )
