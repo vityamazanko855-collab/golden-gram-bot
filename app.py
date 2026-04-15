@@ -5,7 +5,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BotCommand
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
@@ -14,6 +14,16 @@ logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+
+# ✅ ДОБАВЛЕНО (меню команд)
+async def set_commands():
+    commands = [
+        BotCommand(command="start", description="главное меню"),
+        BotCommand(command="help", description="помощь"),
+        BotCommand(command="top", description="топ"),
+        BotCommand(command="profile", description="профиль"),
+    ]
+    await bot.set_my_commands(commands)
 
 user_balances = {}
 user_stats = {}
@@ -528,6 +538,7 @@ async def mine_cash(call: CallbackQuery):
     )
 
 async def main():
+    await set_commands()  # ✅ ДОБАВЛЕНО
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
