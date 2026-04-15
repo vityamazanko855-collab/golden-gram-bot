@@ -183,6 +183,11 @@ def get_mines_keyboard(field, revealed):
         kb.add(InlineKeyboardButton("💰 Забрать выигрыш", callback_data="cash"))
     return kb
 
+# ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОЧИСТКИ КОМАНД ОТ @ ====================
+def clean_command(text: str) -> str:
+    """Убирает @username из команды"""
+    return text.lower().split('@')[0].strip()
+
 # ==================== КОМАНДА ДАТЬ ВСЁ (ответом на сообщение) ====================
 @dp.message_handler(lambda message: message.reply_to_message and message.text.lower().strip() == 'дать всё')
 async def give_all_grams_reply(message: types.Message):
@@ -275,7 +280,8 @@ async def give_grams_reply(message: types.Message):
     except:
         pass
 
-@dp.message_handler(Command("start"))
+# ==================== ОБРАБОТЧИКИ КОМАНД (РАБОТАЮТ И С @bot) ====================
+@dp.message_handler(commands=["start"])
 async def start_cmd(message: Message):
     await message.reply(
         "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
@@ -306,6 +312,76 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
+# Команда профиль
+@dp.message_handler(lambda message: clean_command(message.text) in ['/profile', '/профиль'])
+async def profile_cmd(message: Message):
+    uid = message.from_user.id
+    name = message.from_user.full_name or "Игрок"
+    bal = user_balances.get(uid, 0)
+    stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
+    exp = user_levels.get(uid, 0)
+    lvl = get_level(exp)
+    winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
+    profit = stats["total_win"] - stats["total_bet"]
+    await message.reply(
+        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
+        f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
+        f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
+    )
+
+# Команда топ
+@dp.message_handler(lambda message: clean_command(message.text) == '/top')
+async def top_cmd(message: Message):
+    if not user_balances:
+        await message.reply("📊 Пусто")
+        return
+    sort_items = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+    txt = "🏆 ТОП-10:\n\n"
+    for i, (u, b) in enumerate(sort_items, 1):
+        try:
+            chat = await bot.get_chat(u)
+            n = chat.full_name
+        except:
+            n = str(u)
+        txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
+    await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
+
+# Команда помощь
+@dp.message_handler(lambda message: clean_command(message.text) in ['/help', '/помощь'])
+async def help_cmd(message: Message):
+    await message.reply(
+        "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+        "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
+        "Много: 1000 14 23-34 к 0\n\n"
+        "💣 МИНЫ: мины 100\n"
+        "🃏 БЛЭКДЖЕК: bj 100\n\n"
+        "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+        "дать 500 (ответом на сообщение)\n"
+        "дать всё (ответом на сообщение)</code>",
+        parse_mode="HTML"
+    )
+
+# Команда бонус
+@dp.message_handler(lambda message: clean_command(message.text) == '/bonus')
+async def bonus_cmd(message: Message):
+    uid = message.from_user.id
+    now = int(time.time())
+    ds = daily_streak.get(uid, {"last": 0, "streak": 0})
+    if now - ds["last"] >= 86400:
+        if now - ds["last"] >= 172800:
+            ds["streak"] = 0
+        ds["streak"] += 1
+        bonus = DAILY_BONUS_BASE + (ds["streak"] - 1) * DAILY_BONUS_STREAK_MULTIPLIER
+        user_balances[uid] = user_balances.get(uid, 0) + bonus
+        ds["last"] = now
+        daily_streak[uid] = ds
+        await message.reply(f"<code>🎁 +{format_amount(bonus)} GRAM\n🔥 Стрик: {ds['streak']} дн.</code>", parse_mode="HTML")
+    else:
+        rem = 86400 - (now - ds["last"])
+        h, m = rem // 3600, (rem % 3600) // 60
+        await message.reply(f"<code>⏰ Через {h} ч {m} мин</code>", parse_mode="HTML")
+
+# ==================== ОСНОВНОЙ ОБРАБОТЧИК ====================
 @dp.message_handler()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
@@ -313,6 +389,11 @@ async def handle(message: Message):
     uid = message.from_user.id
     name = message.from_user.full_name or "Игрок"
     text = message.text.strip()
+    
+    # Пропускаем команды, которые уже обработаны
+    if text.lower().startswith('/'):
+        return
+    
     parts = text.split()
 
     if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
@@ -479,12 +560,12 @@ async def handle(message: Message):
         if not user_balances:
             await message.reply("📊 Пусто")
             return
-        sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+        sort_items = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
         txt = "🏆 ТОП-10:\n\n"
-        for i, (u, b) in enumerate(sort, 1):
+        for i, (u, b) in enumerate(sort_items, 1):
             try:
-                u = await bot.get_chat(u)
-                n = u.full_name
+                chat = await bot.get_chat(u)
+                n = chat.full_name
             except:
                 n = str(u)
             txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
