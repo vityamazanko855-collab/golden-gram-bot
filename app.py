@@ -1,12 +1,3 @@
-def normalize_text(text: str):
-    if not text:
-        return ""
-    text = text.strip().lower()
-    if text.startswith("/"):
-        text = text.split("@")[0]  # remove command args and mentions
-        text = text.replace("/", "")
-    return text
-
 import os
 import asyncio
 import logging
@@ -14,7 +5,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, BotCommand
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
@@ -24,7 +15,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Данные хранятся только в памяти (сбрасываются при перезапуске)
 user_balances = {}
 user_stats = {}
 user_levels = {}
@@ -44,44 +34,8 @@ pending_bets = []
 game_in_progress = False
 last_game_time = 0
 
-
-@dp.message(Command("top"))
-async def cmd_top(message: Message):
-    message.text = "топ"
-    await handle(message)
-
-
-@dp.message(Command("profile"))
-async def cmd_profile(message: Message):
-    message.text = "профиль"
-    await handle(message)
-
-
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    message.text = "старт"
-    await handle(message)
-
-
-@dp.message(Command("help"))
-async def cmd_help(message: Message):
-    message.text = "помощь"
-    await handle(message)
-
-
-async def set_commands():
-    commands = [
-        BotCommand(command="start", description="главное меню"),
-        BotCommand(command="help", description="помощь"),
-        BotCommand(command="top", description="топ"),
-        BotCommand(command="profile", description="профиль"),
-    ]
-    await bot.set_my_commands(commands)
-
-
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
-
 
 def spin_roulette():
     number = random.randint(0, 36)
@@ -96,7 +50,6 @@ def spin_roulette():
         color_name = "ЧЁРНОЕ"
     return number, color_emoji, color_name
 
-
 def normalize_bet(bet: str) -> str:
     bet = bet.lower().strip()
     if bet in ["к", "красное", "красный", "red", "🔴"]: return "красное"
@@ -108,7 +61,6 @@ def normalize_bet(bet: str) -> str:
     if bet in ["2-я", "2я", "вторая", "второй"]: return "2-я"
     if bet in ["3-я", "3я", "третья", "третий"]: return "3-я"
     return bet
-
 
 def check_win(bet: str, num: int, color: str) -> bool:
     bet = normalize_bet(bet)
@@ -136,7 +88,6 @@ def check_win(bet: str, num: int, color: str) -> bool:
             pass
     return False
 
-
 def get_multiplier(bet: str) -> int:
     bet = normalize_bet(bet)
     if bet in ["красное", "чёрное", "чётное", "нечётное"]: return 2
@@ -162,14 +113,12 @@ def get_multiplier(bet: str) -> int:
             pass
     return 2
 
-
 def get_level(exp: int) -> int:
     if exp < 10: return 1
     elif exp < 30: return 2
     elif exp < 60: return 3
     elif exp < 100: return 4
     else: return 5
-
 
 def generate_mines_field():
     field = [["⭐" for _ in range(5)] for _ in range(5)]
@@ -179,14 +128,12 @@ def generate_mines_field():
         field[row][col] = "💣"
     return field
 
-
 def format_mines_field(field, revealed):
     lines = []
     for i in range(5):
         row = " ".join(field[i][j] if (i, j) in revealed else "❓" for j in range(5))
         lines.append(row)
     return "\n".join(lines)
-
 
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
@@ -205,14 +152,13 @@ async def add_grams(message: Message):
     user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amount
     await message.reply(f"✅ +{format_amount(amount)} GRAM")
 
-
 @dp.message()
 async def handle(message: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
 
     uid = message.from_user.id
     name = message.from_user.full_name or "Игрок"
-    text = normalize_text(message.text)
+    text = message.text.strip()
     parts = text.split()
 
     if text.lower().startswith("мины "):
@@ -313,13 +259,13 @@ async def handle(message: Message):
             return
         sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
         txt = "🏆 ТОП-10:\n\n"
-        for i, (user_id, balance) in enumerate(sort, 1):
+        for i, (u, b) in enumerate(sort, 1):
             try:
-                user_chat = await bot.get_chat(user_id)
-                uname = user_chat.full_name
+                u = await bot.get_chat(u)
+                n = u.full_name
             except:
-                uname = f"Игрок {user_id}"
-            txt += f"{i}. {uname} — {format_amount(balance)} GRAM\n"
+                n = str(u)
+            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
         await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
         return
 
@@ -372,7 +318,7 @@ async def handle(message: Message):
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
         return
 
-    if text.lower() in ["помощь", "команды", "help", "старт"]:
+    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
         await message.reply(
             "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
             "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
@@ -494,7 +440,6 @@ async def handle(message: Message):
         for i in range(0, len(acc), 20):
             await message.reply("<code>" + "\n".join(acc[i:i+20]) + "</code>", parse_mode="HTML")
 
-
 @dp.callback_query(F.data.startswith("m_"))
 async def mine_click(call: CallbackQuery):
     await call.answer()
@@ -549,7 +494,6 @@ async def mine_click(call: CallbackQuery):
         reply_markup=kb.as_markup()
     )
 
-
 @dp.callback_query(F.data == "cash")
 async def mine_cash(call: CallbackQuery):
     await call.answer()
@@ -572,4 +516,19 @@ async def mine_cash(call: CallbackQuery):
     user_stats[uid]["won"] += 1
     user_stats[uid]["total_bet"] += g["bet"]
     user_stats[uid]["total_win"] += win
-    user_levels[uid] = user_levels.get(uid, 0)
+    user_levels[uid] = user_levels.get(uid, 0) + 1
+
+    del mines_games[uid]
+
+    await call.message.edit_text(
+        f"💰 {call.from_user.full_name} забрал выигрыш!\n"
+        f"✅ +{format_amount(win)} GRAM\n"
+        f"💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n"
+        f"{format_mines_field(g['field'], g['revealed'])}"
+    )
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
