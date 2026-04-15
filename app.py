@@ -5,7 +5,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BotCommand
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
@@ -135,6 +135,63 @@ def format_mines_field(field, revealed):
         lines.append(row)
     return "\n".join(lines)
 
+# ========== ОБРАБОТЧИК ВСТРОЕННЫХ КОМАНД (над клавиатурой) ==========
+@dp.message(F.text.endswith("@Golden_Gram_Roulette_Bot"))
+async def handle_mentioned_commands(message: Message):
+    text = message.text.replace("@Golden_Gram_Roulette_Bot", "").strip()
+    if text == "/top":
+        await top_cmd(message)
+    elif text == "/profile":
+        await profile_cmd(message)
+    elif text in ["/help", "/start"]:
+        await help_cmd(message)
+
+async def top_cmd(message: Message):
+    if not user_balances:
+        await message.reply("📊 Пусто")
+        return
+    sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
+    txt = "🏆 ТОП-10:\n\n"
+    for i, (u, b) in enumerate(sort, 1):
+        try:
+            u = await bot.get_chat(u)
+            n = u.full_name
+        except:
+            n = str(u)
+        txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
+    await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
+
+async def profile_cmd(message: Message):
+    uid = message.from_user.id
+    name = message.from_user.full_name or "Игрок"
+    bal = user_balances.get(uid, 0)
+    stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
+    exp = user_levels.get(uid, 0)
+    lvl = get_level(exp)
+    winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
+    profit = stats["total_win"] - stats["total_bet"]
+    await message.reply(
+        f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
+        f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
+        f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
+    )
+
+async def help_cmd(message: Message):
+    await message.reply(
+        "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+        "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
+        "Много: 1000 14 23-34 к 0\n\n"
+        "💣 МИНЫ: мины 100\n\n"
+        "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
+        "дать @user 1000 / дать всё (ответом)</code>",
+        parse_mode="HTML"
+    )
+
+# ========== ОСНОВНЫЕ КОМАНДЫ ==========
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    await help_cmd(message)
+
 @dp.message(Command("add_grams"))
 async def add_grams(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -208,17 +265,7 @@ async def handle(message: Message):
         return
 
     if text.lower() in ["профиль", "profile"]:
-        bal = user_balances.get(uid, 0)
-        stats = user_stats.get(uid, {"played": 0, "won": 0, "total_bet": 0, "total_win": 0})
-        exp = user_levels.get(uid, 0)
-        lvl = get_level(exp)
-        winrate = (stats["won"] / stats["played"] * 100) if stats["played"] > 0 else 0
-        profit = stats["total_win"] - stats["total_bet"]
-        await message.reply(
-            f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n"
-            f"🎲 Игр: {stats['played']}\n🏆 Побед: {stats['won']}\n📈 Винрейт: {winrate:.1f}%\n"
-            f"📊 Профит: {format_amount(profit)} GRAM</code>", parse_mode="HTML"
-        )
+        await profile_cmd(message)
         return
 
     if text.lower() == "бонус":
@@ -254,19 +301,7 @@ async def handle(message: Message):
         return
 
     if text.lower() == "топ":
-        if not user_balances:
-            await message.reply("📊 Пусто")
-            return
-        sort = sorted(user_balances.items(), key=lambda x: x[1], reverse=True)[:10]
-        txt = "🏆 ТОП-10:\n\n"
-        for i, (u, b) in enumerate(sort, 1):
-            try:
-                u = await bot.get_chat(u)
-                n = u.full_name
-            except:
-                n = str(u)
-            txt += f"{i}. {n} — {format_amount(b)} GRAM\n"
-        await message.reply(f"<code>{txt}</code>", parse_mode="HTML")
+        await top_cmd(message)
         return
 
     if text.lower().startswith("дать "):
@@ -318,16 +353,8 @@ async def handle(message: Message):
             await message.reply(f"✅ {format_amount(amt)} GRAM → {t.full_name}")
         return
 
-    if text.lower() in ["помощь", "команды", "help", "старт", "/start"]:
-        await message.reply(
-            "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
-            "🎲 СТАВКИ:\n100 чёрное / 250 красное / 500 чётное\n1000 14 / 2000 0 / 5000 1-12\n"
-            "Много: 1000 14 23-34 к 0\n\n"
-            "💣 МИНЫ: мины 100\n\n"
-            "🕹️ КОМАНДЫ:\nб, лог, топ, профиль, бонус, го, отмена\n"
-            "дать @user 1000 / дать всё (ответом)</code>",
-            parse_mode="HTML"
-        )
+    if text.lower() in ["помощь", "команды", "help", "старт"]:
+        await help_cmd(message)
         return
 
     if text.lower() == "го":
