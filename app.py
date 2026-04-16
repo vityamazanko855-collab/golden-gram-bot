@@ -160,7 +160,7 @@ def get_achievements_list(uid):
     
     for ach_id, ach in achievements_data.items():
         if ach_id in user_achievements[uid]:
-            lines.append(f"✅ {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])} GOLD)")
+            lines.append(f"✅ {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])})")
         else:
             lines.append(f"❌ {ach['name']} - {ach['desc']}")
     
@@ -193,7 +193,8 @@ def format_dice(d1, d2):
     return f"{dice_faces[d1]} {dice_faces[d2]}"
 
 # ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
-def format_amount(a): return f"{a:,} GOLD".replace(","," ")
+def format_amount(a): 
+    return f"{a:,}".replace(","," ")
 def get_level(e):
  if e<10:return 1
  elif e<30:return 2
@@ -395,7 +396,7 @@ def get_mines_keyboard(field,revealed):
 
 async def send_quest_notify(uid,qid,reward,msg=None):
  name=daily_quests[qid]["name"]
- text=f"🎉 <b>ЗАДАНИЕ ВЫПОЛНЕНО!</b> 🎉\n\n📋 {name}\n💰 Награда: +{format_amount(reward)} GOLD\n\n💳 Баланс: {format_amount(user_balances.get(uid,0))}"
+ text=f"🎉 <b>ЗАДАНИЕ ВЫПОЛНЕНО!</b> 🎉\n\n📋 {name}\n💰 Награда: +{format_amount(reward)} GOLD\n\n💳 Баланс: {format_amount(user_balances.get(uid,0))} GOLD"
  try:
   if msg:await msg.reply(text,parse_mode="HTML")
   else:await bot.send_message(uid,text,parse_mode="HTML")
@@ -453,7 +454,7 @@ async def menu_cb(call):
  uid=call.from_user.id
  act=call.data[5:]
  if act=="balance":
-  await call.message.edit_text(f"💰 <b>Ваш баланс</b>\n\n└ {format_amount(user_balances.get(uid,0))}",parse_mode="HTML",reply_markup=get_main_keyboard())
+  await call.message.edit_text(f"💰 <b>Ваш баланс</b>\n\n└ {format_amount(user_balances.get(uid,0))} GOLD",parse_mode="HTML",reply_markup=get_main_keyboard())
  elif act=="profile":
   name=call.from_user.full_name
   bal=user_balances.get(uid,0)
@@ -462,7 +463,7 @@ async def menu_cb(call):
   rank=get_rank(bal)
   wr=(s["won"]/s["played"]*100)if s["played"]>0 else 0
   prof=s["total_win"]-s["total_bet"]
-  await call.message.edit_text(f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n├ 🏅 Ранг: {rank['name']}\n└ 💰 {format_amount(bal)}\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)}",parse_mode="HTML",reply_markup=get_main_keyboard())
+  await call.message.edit_text(f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n├ 🏅 Ранг: {rank['name']}\n└ 💰 {format_amount(bal)} GOLD\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)} GOLD",parse_mode="HTML",reply_markup=get_main_keyboard())
  elif act=="quests":
   await call.message.edit_text(f"🎯 <b>ЕЖЕДНЕВНЫЕ ЗАДАНИЯ</b>{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!",parse_mode="HTML",reply_markup=get_main_keyboard())
  elif act=="achievements":
@@ -474,7 +475,7 @@ async def menu_cb(call):
   for i,(u,b)in enumerate(items,1):
    try:n=(await bot.get_chat(u)).full_name
    except:n=str(u)
-   txt+=f"{i}. {n}\n└ {format_amount(b)}\n\n"
+   txt+=f"{i}. {n}\n└ {format_amount(b)} GOLD\n\n"
   await call.message.edit_text(txt,parse_mode="HTML",reply_markup=get_main_keyboard())
  else:
   texts={
@@ -513,7 +514,7 @@ async def handle(m):
     break
   if next_rank:
    need=next_rank["need"]-bal
-   await m.reply(f"🏅 <b>ТВОЙ РАНГ</b>\n\n{rank['name']}\n\n📊 До следующего ранга ({next_rank['name']}):\n└ {format_amount(need)}",parse_mode="HTML")
+   await m.reply(f"🏅 <b>ТВОЙ РАНГ</b>\n\n{rank['name']}\n\n📊 До следующего ранга ({next_rank['name']}):\n└ {format_amount(need)} GOLD",parse_mode="HTML")
   else:
    await m.reply(f"🏅 <b>ТВОЙ РАНГ</b>\n\n{rank['name']}\n\n👑 Ты достиг максимального ранга!",parse_mode="HTML")
   return
@@ -532,7 +533,7 @@ async def handle(m):
    return
   bal=user_balances.get(uid,0)
   if bet>bal:
-   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)}")
+   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)} GOLD")
    return
   
   old_bal=bal
@@ -588,7 +589,7 @@ async def handle(m):
    return
   bal=user_balances.get(uid,0)
   if bet>bal:
-   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)}")
+   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)} GOLD")
    return
   
   old_bal=bal
@@ -651,7 +652,7 @@ async def handle(m):
   
   bal=user_balances.get(uid,0)
   if bet>bal:
-   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)}")
+   await m.reply(f"❌ Недостаточно GOLD, баланс: {format_amount(bal)} GOLD")
    return
   
   old_bal=bal
@@ -709,7 +710,7 @@ async def handle(m):
   tid=m.reply_to_message.from_user.id
   if uid==tid:return await m.reply("❌ Нельзя перевести самому себе")
   bal=user_balances.get(uid,0)
-  if bal<amt:return await m.reply(f"❌ Не хватает, баланс: {format_amount(bal)}")
+  if bal<amt:return await m.reply(f"❌ Не хватает, баланс: {format_amount(bal)} GOLD")
   user_balances[uid]=bal-amt
   user_balances[tid]=user_balances.get(tid,0)+amt
   save_data()
@@ -797,7 +798,7 @@ async def handle(m):
   rank=get_rank(bal)
   wr=(s["won"]/s["played"]*100)if s["played"]>0 else 0
   prof=s["total_win"]-s["total_bet"]
-  await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n🏅 Ранг: {rank['name']}\n💰 {format_amount(bal)}\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)}</code>",parse_mode="HTML")
+  await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n🏅 Ранг: {rank['name']}\n💰 {format_amount(bal)} GOLD\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GOLD</code>",parse_mode="HTML")
   return
  if text.lower() in["ачивки","achievements"]:
   await m.reply(get_achievements_list(uid),parse_mode="HTML")
@@ -819,7 +820,7 @@ async def handle(m):
    await m.reply(f"<code>⏰ Через {rem//3600} ч {(rem%3600)//60} мин</code>",parse_mode="HTML")
   return
  if text.lower() in["б","баланс"]:
-  await m.reply(f"<code>{name}\n💰 Баланс: {format_amount(user_balances.get(uid,0))}</code>",parse_mode="HTML")
+  await m.reply(f"<code>{name}\n💰 Баланс: {format_amount(user_balances.get(uid,0))} GOLD</code>",parse_mode="HTML")
   return
  if text.lower() in["лог","история"]:
   if not game_history:return await m.reply("📋 История пуста")
@@ -838,7 +839,7 @@ async def handle(m):
   for i,(u,b)in enumerate(items,1):
    try:n=(await bot.get_chat(u)).full_name
    except:n=str(u)
-   txt+=f"{i}. {n}\n└ {format_amount(b)}\n\n"
+   txt+=f"{i}. {n}\n└ {format_amount(b)} GOLD\n\n"
   await m.reply(f"<code>{txt}</code>",parse_mode="HTML")
   return
  if text.lower()=="го":
