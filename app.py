@@ -229,9 +229,15 @@ async def send_quest_notify(uid,qid,reward,msg=None):
   else:await bot.send_message(uid,text,parse_mode="HTML")
  except:pass
 
+def force_reset_game():
+ global game_in_progress, pending_bets
+ game_in_progress = False
+ pending_bets.clear()
+
 @dp.message_handler(commands=["start"])
 async def start_cmd(m):
  init_quests()
+ force_reset_game()
  await m.reply(
   "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
   "🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n"
@@ -289,6 +295,12 @@ async def menu_cb(call):
 @dp.message_handler()
 async def handle(m):
  global pending_bets,game_in_progress,last_game_time,game_history
+ 
+ # Принудительный сброс зависшей игры (если прошло больше 60 секунд)
+ if game_in_progress and time.time() - last_game_time > 60:
+  force_reset_game()
+  await m.reply("⚠️ Предыдущая игра принудительно завершена (таймаут)")
+ 
  uid=m.from_user.id
  name=m.from_user.full_name
  text=m.text.strip()
@@ -320,6 +332,9 @@ async def handle(m):
   await m.reply(f"✅ Переведено {format_amount(amt)} GRAM пользователю {m.reply_to_message.from_user.full_name}")
   return
  if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
+  if game_in_progress:
+   await m.reply("⏳ Идёт игра, подождите...")
+   return
   if len(parts)<2:return await m.reply("❌ Пример: bj 100")
   try:bet=int(parts[1])
   except:return await m.reply("❌ Пример: bj 100")
@@ -357,6 +372,9 @@ async def handle(m):
   await m.reply(f"<code>🃏 БЛЭКДЖЕК\n💰 Ставка: {format_amount(bet)} GRAM\n\nВаши карты: {format_cards(ph)} ({pv})\nКарта дилера: {format_cards([dh[0]])}</code>",parse_mode="HTML",reply_markup=kb)
   return
  if text.lower().startswith("мины "):
+  if game_in_progress:
+   await m.reply("⏳ Идёт игра, подождите...")
+   return
   if len(parts)<2:return await m.reply("❌ Пример: мины 100")
   try:bet=int(parts[1])
   except:return await m.reply("❌ Пример: мины 100")
@@ -441,6 +459,7 @@ async def handle(m):
    await m.reply("❌ Нет активных ставок")
    return
   game_in_progress=True
+  last_game_time=time.time()
   try:gif=await m.answer_animation(ROULETTE_GIF,caption="🎰 Крутим...")
   except:gif=None
   await asyncio.sleep(10)
