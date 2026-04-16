@@ -31,7 +31,7 @@ DATA_FILE="bot_data.json"
 daily_quests={}
 last_quest_reset=int(time.time())
 
-# ========== АЧИВКИ ==========
+# ========== АЧИВКИ (без icon) ==========
 achievements_data = {
     "millionaire": {"name": "💰 МИЛЛИОНЕР", "desc": "Накопить 1 000 000 GRAM", "reward": 100000, "need_balance": 1000000},
     "gambler": {"name": "🎲 АЗАРТНЫЙ", "desc": "Сыграть 100 игр", "reward": 50000, "need_games": 100},
@@ -428,7 +428,6 @@ async def handle(m):
   
   bet_type = " ".join(parts[2:]).lower()
   
-  # ВАЖНО: проверяем допустимые типы ставок
   if bet_type not in VALID_DICE_BETS:
    await m.reply(f"❌ Неверный тип ставки!\nВарианты: на [2-12], на дубль, на чёт, на нечёт, на больше, на меньше\nПример: кости 500 на 7")
    return
@@ -472,7 +471,7 @@ async def handle(m):
   save_data()
   return
  
- # ========== ОСТАЛЬНЫЕ КОМАНДЫ ==========
+ # ========== ОСТАЛЬНЫЕ КОМАНДЫ (сокращенно) ==========
  if m.reply_to_message and text.lower().strip()=='дать всё':
   tid=m.reply_to_message.from_user.id
   if uid==tid:return await m.reply("❌ Нельзя перевести самому себе")
