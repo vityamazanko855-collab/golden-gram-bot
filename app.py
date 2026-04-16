@@ -223,7 +223,7 @@ async def send_quest_notify(uid,qid,reward,msg=None):
 @dp.message_handler(commands=["start"])
 async def start_cmd(m):
  init_quests()
- await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б, лог, топ, профиль\n├ бонус, го, отмена, задания\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
+ await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - ежедневный бонус\n├ задания - ежедневные задания\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
 
 @dp.message_handler(commands=["add_grams"])
 async def add_grams(m):
@@ -370,7 +370,7 @@ async def handle(m):
   await m.reply(f"<code>🎯 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!</code>",parse_mode="HTML")
   return
  if text.lower() in["помощь","команды","help"]:
-  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б, лог, топ, профиль\n├ бонус, го, отмена, задания\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML")
+  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - ежедневный бонус\n├ задания - ежедневные задания\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML")
   return
  if text.lower()=="топ":
   if not user_balances:return await m.reply("📊 Пусто")
