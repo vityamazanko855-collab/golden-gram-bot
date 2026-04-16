@@ -359,38 +359,45 @@ def check_titles(uid):
             save_data()
     return new_titles
 
+# ========== ФУНКЦИИ ДЛЯ ВЫВОДА С КРАСИВЫМИ СИМВОЛАМИ ==========
 def get_achievements_list(uid):
     if uid not in user_achievements:
         user_achievements[uid] = []
-    lines = ["🏆 <b>ТВОИ ДОСТИЖЕНИЯ</b>\n"]
-    for aid, ach in achievements_data.items():
+    lines = ["🏆 <b>ДОСТИЖЕНИЯ</b>\n"]
+    items = list(achievements_data.items())
+    for i, (aid, ach) in enumerate(items):
+        prefix = "└" if i == len(items) - 1 else "├"
         if aid in user_achievements[uid]:
-            lines.append(f"✅ {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])})")
+            lines.append(f"{prefix} ✅ {ach['name']} (+{format_amount(ach['reward'])})")
         else:
-            lines.append(f"❌ {ach['name']} - {ach['desc']}")
+            lines.append(f"{prefix} ❌ {ach['name']}")
     return "\n".join(lines)
 
 def get_badges_list(uid):
     if uid not in user_badges:
         user_badges[uid] = []
-    lines = ["🎖️ <b>ТВОИ ЗНАЧКИ</b>\n"]
-    for bid, badge in BADGES.items():
+    lines = ["🎖️ <b>ЗНАЧКИ</b>\n"]
+    items = list(BADGES.items())
+    for i, (bid, badge) in enumerate(items):
+        prefix = "└" if i == len(items) - 1 else "├"
         if bid in user_badges[uid]:
-            lines.append(f"✅ {badge['icon']} {badge['name']} - {badge['desc']}")
+            lines.append(f"{prefix} ✅ {badge['icon']} {badge['name']}")
         else:
-            lines.append(f"❌ {badge['icon']} {badge['name']} - {badge['desc']}")
+            lines.append(f"{prefix} ❌ {badge['icon']} {badge['name']}")
     return "\n".join(lines)
 
 def get_titles_list(uid):
     if uid not in user_titles:
         user_titles[uid] = []
-    lines = ["🏅 <b>ТВОИ ТИТУЛЫ</b>\n"]
-    for tid, t in TITLES.items():
+    lines = ["🏅 <b>ТИТУЛЫ</b>\n"]
+    items = list(TITLES.items())
+    for i, (tid, t) in enumerate(items):
+        prefix = "└" if i == len(items) - 1 else "├"
         if tid in user_titles[uid]:
-            lines.append(f"✅ {t['name']} - {t['desc']}")
+            lines.append(f"{prefix} ✅ {t['name']}")
         else:
-            lines.append(f"❌ {t['name']} - {t['desc']}")
-    lines.append(f"\n📌 Активный титул: {user_active_title.get(uid, 'Не выбран')}")
+            lines.append(f"{prefix} ❌ {t['name']}")
+    lines.append(f"└ 📌 Активный: {user_active_title.get(uid, 'Не выбран')}")
     return "\n".join(lines)
 
 # ========== ЗАДАНИЯ ==========
@@ -1875,7 +1882,6 @@ async def lottery_scheduler():
 if __name__ == "__main__":
     load_data()
     init_quests()
-    # Создаём loop и запускаем фоновую задачу
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(lottery_scheduler())
