@@ -18,6 +18,7 @@ blackjack_games={}
 pending_bets=[]
 game_in_progress=False
 last_game_time=0
+user_achievements={}  # Список полученных ачивок
 
 ADMIN_ID=6003768110
 GAME_COOLDOWN=15
@@ -30,6 +31,100 @@ DATA_FILE="bot_data.json"
 daily_quests={}
 last_quest_reset=int(time.time())
 
+# ========== АЧИВКИ ==========
+achievements_data = {
+    "millionaire": {"name": "💰 МИЛЛИОНЕР", "desc": "Накопить 1 000 000 GRAM", "reward": 100000, "need_balance": 1000000},
+    "gambler": {"name": "🎲 АЗАРТНЫЙ", "desc": "Сыграть 100 игр", "reward": 50000, "need_games": 100},
+    "winner": {"name": "🏆 ПОБЕДИТЕЛЬ", "desc": "Выиграть 50 раз", "reward": 75000, "need_wins": 50},
+    "sapper": {"name": "💣 САПЁР", "desc": "Выиграть в минах 10 раз", "reward": 50000, "need_mines_wins": 10},
+    "carder": {"name": "🃏 КАРТЁЖНИК", "desc": "Выиграть в блэкджек 25 раз", "reward": 50000, "need_bj_wins": 25},
+    "streak": {"name": "🔥 СТРИКЕР", "desc": "Выиграть 5 раз подряд", "reward": 30000, "need_streak": 5}
+}
+
+def check_achievements(uid):
+    """Проверяет и выдает ачивки"""
+    if uid not in user_achievements:
+        user_achievements[uid] = []
+    
+    stats = user_stats.get(uid, {"played":0, "won":0, "total_bet":0, "total_win":0})
+    mines_wins = user_stats.get(uid, {}).get("mines_wins", 0)
+    bj_wins = user_stats.get(uid, {}).get("bj_wins", 0)
+    current_streak = daily_quests["win_3_streak"]["current_streak"].get(uid, 0)
+    balance = user_balances.get(uid, 0)
+    
+    new_achievements = []
+    
+    for ach_id, ach in achievements_data.items():
+        if ach_id in user_achievements[uid]:
+            continue
+        
+        earned = False
+        if "need_balance" in ach and balance >= ach["need_balance"]:
+            earned = True
+        elif "need_games" in ach and stats["played"] >= ach["need_games"]:
+            earned = True
+        elif "need_wins" in ach and stats["won"] >= ach["need_wins"]:
+            earned = True
+        elif "need_mines_wins" in ach and mines_wins >= ach["need_mines_wins"]:
+            earned = True
+        elif "need_bj_wins" in ach and bj_wins >= ach["need_bj_wins"]:
+            earned = True
+        elif "need_streak" in ach and current_streak >= ach["need_streak"]:
+            earned = True
+        
+        if earned:
+            user_achievements[uid].append(ach_id)
+            user_balances[uid] = user_balances.get(uid, 0) + ach["reward"]
+            new_achievements.append(ach)
+            save_data()
+    
+    return new_achievements
+
+def get_achievements_list(uid):
+    """Возвращает список ачивок пользователя"""
+    if uid not in user_achievements:
+        user_achievements[uid] = []
+    
+    lines = ["🏆 <b>ТВОИ ДОСТИЖЕНИЯ</b>\n"]
+    
+    for ach_id, ach in achievements_data.items():
+        if ach_id in user_achievements[uid]:
+            lines.append(f"✅ {ach['icon']} {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])} GRAM)")
+        else:
+            lines.append(f"❌ {ach['icon']} {ach['name']} - {ach['desc']}")
+    
+    return "\n".join(lines)
+
+# ========== КОСТИ ==========
+def roll_dice():
+    return random.randint(1, 6), random.randint(1, 6)
+
+def get_dice_multiplier(bet_type, d1, d2):
+    total = d1 + d2
+    if bet_type == "сумма":
+        return 6 if total == 7 else (5 if total in [6,8] else (4 if total in [5,9] else (3 if total in [4,10] else 2)))
+    elif bet_type == "дубль":
+        return 10 if d1 == d2 else 0
+    elif bet_type == "чёт":
+        return 2 if total % 2 == 0 else 0
+    elif bet_type == "нечёт":
+        return 2 if total % 2 == 1 else 0
+    elif bet_type == "больше":
+        return 2 if total > 7 else 0
+    elif bet_type == "меньше":
+        return 2 if total < 7 else 0
+    elif bet_type.isdigit():
+        return 8 if total == int(bet_type) else 0
+    return 0
+
+def format_dice(d1, d2):
+    dice_faces = {
+        1: "⚀", 2: "⚁", 3: "⚂",
+        4: "⚃", 5: "⚄", 6: "⚅"
+    }
+    return f"{dice_faces[d1]} {dice_faces[d2]}"
+
+# ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
 def format_amount(a): return f"{a:,}".replace(","," ")
 def get_level(e):
  if e<10:return 1
@@ -39,7 +134,7 @@ def get_level(e):
  else:return 5
 
 def load_data():
- global user_balances,user_stats,user_levels,daily_streak,game_history,daily_quests,last_quest_reset
+ global user_balances,user_stats,user_levels,daily_streak,game_history,daily_quests,last_quest_reset,user_achievements
  try:
   with open(DATA_FILE,"r")as f:
    d=json.load(f)
@@ -50,11 +145,12 @@ def load_data():
    game_history=d.get("game_history",[])
    daily_quests=d.get("daily_quests",{})
    last_quest_reset=d.get("last_quest_reset",int(time.time()))
+   user_achievements=d.get("user_achievements",{})
  except:pass
 
 def save_data():
  with open(DATA_FILE,"w")as f:
-  json.dump({"user_balances":user_balances,"user_stats":user_stats,"user_levels":user_levels,"daily_streak":daily_streak,"game_history":game_history[-50:],"daily_quests":daily_quests,"last_quest_reset":last_quest_reset},f,ensure_ascii=False,indent=2)
+  json.dump({"user_balances":user_balances,"user_stats":user_stats,"user_levels":user_levels,"daily_streak":daily_streak,"game_history":game_history[-50:],"daily_quests":daily_quests,"last_quest_reset":last_quest_reset,"user_achievements":user_achievements},f,ensure_ascii=False,indent=2)
 
 def init_quests():
  global daily_quests
@@ -106,10 +202,12 @@ def get_main_keyboard():
   InlineKeyboardButton("💰 Баланс",callback_data="menu_balance"),
   InlineKeyboardButton("📊 Профиль",callback_data="menu_profile"),
   InlineKeyboardButton("🎲 Рулетка",callback_data="menu_roulette"),
+  InlineKeyboardButton("🎲 Кости",callback_data="menu_dice"),
   InlineKeyboardButton("💣 Мины",callback_data="menu_mines"),
   InlineKeyboardButton("🃏 Блэкджек",callback_data="menu_blackjack"),
   InlineKeyboardButton("🎁 Задания",callback_data="menu_quests"),
   InlineKeyboardButton("🏆 Топ",callback_data="menu_top"),
+  InlineKeyboardButton("🏅 Ачивки",callback_data="menu_achievements"),
   InlineKeyboardButton("❓ Помощь",callback_data="menu_help")
  )
  return kb
@@ -229,6 +327,13 @@ async def send_quest_notify(uid,qid,reward,msg=None):
   else:await bot.send_message(uid,text,parse_mode="HTML")
  except:pass
 
+async def send_achievement_notify(uid,ach,msg=None):
+ text=f"🏆 <b>ДОСТИЖЕНИЕ ПОЛУЧЕНО!</b> 🏆\n\n{ach['icon']} {ach['name']}\n{ach['desc']}\n\n💰 Награда: +{format_amount(ach['reward'])} GRAM"
+ try:
+  if msg:await msg.reply(text,parse_mode="HTML")
+  else:await bot.send_message(uid,text,parse_mode="HTML")
+ except:pass
+
 def force_reset_game():
  global game_in_progress, pending_bets
  game_in_progress = False
@@ -241,8 +346,10 @@ async def start_cmd(m):
  await m.reply(
   "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
   "🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n"
-  "💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n"
-  "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
+  "🎲 КОСТИ: кости 500 на 7\n"
+  "💣 МИНЫ: мины 100\n"
+  "🃏 БЛЭКДЖЕК: bj 100\n\n"
+  "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ ачивки - достижения\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
   parse_mode="HTML",
   reply_markup=get_main_keyboard()
  )
@@ -274,6 +381,8 @@ async def menu_cb(call):
   await call.message.edit_text(f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n└ 💰 {format_amount(bal)} GRAM\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)} GRAM",parse_mode="HTML",reply_markup=get_main_keyboard())
  elif act=="quests":
   await call.message.edit_text(f"🎯 <b>ЕЖЕДНЕВНЫЕ ЗАДАНИЯ</b>{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!",parse_mode="HTML",reply_markup=get_main_keyboard())
+ elif act=="achievements":
+  await call.message.edit_text(get_achievements_list(uid),parse_mode="HTML",reply_markup=get_main_keyboard())
  elif act=="top":
   if not user_balances:return await call.message.edit_text("📊 Пусто",reply_markup=get_main_keyboard())
   items=sorted(user_balances.items(),key=lambda x:x[1],reverse=True)[:10]
@@ -286,9 +395,10 @@ async def menu_cb(call):
  else:
   texts={
    "roulette":"🎲 <b>СТАВКИ НА РУЛЕТКУ</b>\n\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12",
+   "dice":"🎲 <b>ИГРА КОСТИ</b>\n\n├ Команда: кости 500 на 7\n├ кости 500 на дубль\n├ кости 500 на чёт\n├ кости 500 на нечёт\n├ кости 500 на больше\n└ кости 500 на меньше",
    "mines":"💣 <b>ИГРА МИНЫ</b>\n\n├ Команда: мины 100\n├ Поле 5x5, 3 мины\n├ Каждая клетка +0.14x\n└ Максимум x4.0",
    "blackjack":"🃏 <b>БЛЭКДЖЕК</b>\n\n├ Команда: bj 100\n├ Мин. ставка: 100\n├ Блэкджек: x2.5\n├ Победа: x2\n└ Сдача: 50%",
-   "help":"🎰 <b>GOLDEN GRAM ROULETTE</b>\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)"
+   "help":"🎰 <b>GOLDEN GRAM ROULETTE</b>\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n🎲 КОСТИ: кости 500 на 7\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ ачивки - достижения\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)"
   }
   await call.message.edit_text(texts.get(act,"❓ Помощь"),parse_mode="HTML",reply_markup=get_main_keyboard())
 
@@ -296,7 +406,6 @@ async def menu_cb(call):
 async def handle(m):
  global pending_bets,game_in_progress,last_game_time,game_history
  
- # Принудительный сброс зависшей игры (если прошло больше 60 секунд)
  if game_in_progress and time.time() - last_game_time > 60:
   force_reset_game()
   await m.reply("⚠️ Предыдущая игра принудительно завершена (таймаут)")
@@ -307,6 +416,55 @@ async def handle(m):
  if text.lower().startswith('/'):return
  parts=text.split()
  
+ # ========== КОСТИ ==========
+ if text.lower().startswith("кости "):
+  if len(parts)<3:return await m.reply("❌ Пример: кости 500 на 7\nВарианты: на [2-12], на дубль, на чёт, на нечёт, на больше, на меньше")
+  try:bet=int(parts[1])
+  except:return await m.reply("❌ Пример: кости 500 на 7")
+  if bet<100:return await m.reply("❌ Минимальная ставка 100 GRAM")
+  bal=user_balances.get(uid,0)
+  if bet>bal:return await m.reply("❌ Недостаточно GRAM")
+  
+  bet_type = " ".join(parts[2:]).lower()
+  
+  user_balances[uid]=bal-bet
+  d1,d2=roll_dice()
+  mult=get_dice_multiplier(bet_type,d1,d2)
+  
+  if mult>0:
+   win=bet*mult
+   user_balances[uid]=user_balances.get(uid,0)+win
+   await m.reply(f"🎲 <b>КОСТИ</b>\n\n{format_dice(d1,d2)}\nСумма: {d1+d2}\n\n✅ ВЫ ВЫИГРАЛИ!\n💰 +{format_amount(win)} GRAM (x{mult})",parse_mode="HTML")
+   # Обновляем статистику
+   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
+   user_stats[uid]["played"]+=1
+   user_stats[uid]["won"]+=1
+   user_stats[uid]["total_bet"]+=bet
+   user_stats[uid]["total_win"]+=win
+   user_levels[uid]=user_levels.get(uid,0)+1
+   # Обновляем задания
+   rew=update_quest_progress(uid,"play_3_games")
+   if rew:await send_quest_notify(uid,"play_3_games",rew,m)
+   daily_quests["win_3_streak"]["current_streak"][uid]=daily_quests["win_3_streak"]["current_streak"].get(uid,0)+1
+   rew2=update_quest_progress(uid,"win_3_streak",daily_quests["win_3_streak"]["current_streak"][uid])
+   if rew2:await send_quest_notify(uid,"win_3_streak",rew2,m)
+   # Проверяем ачивки
+   new_achs=check_achievements(uid)
+   for ach in new_achs:
+    await send_achievement_notify(uid,ach,m)
+  else:
+   await m.reply(f"🎲 <b>КОСТИ</b>\n\n{format_dice(d1,d2)}\nСумма: {d1+d2}\n\n❌ ВЫ ПРОИГРАЛИ!\n💸 -{format_amount(bet)} GRAM",parse_mode="HTML")
+   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
+   user_stats[uid]["played"]+=1
+   user_stats[uid]["total_bet"]+=bet
+   user_levels[uid]=user_levels.get(uid,0)+1
+   rew=update_quest_progress(uid,"play_3_games")
+   if rew:await send_quest_notify(uid,"play_3_games",rew,m)
+   daily_quests["win_3_streak"]["current_streak"][uid]=0
+  save_data()
+  return
+ 
+ # ========== ОТМЕНА СТАВОК ==========
  if m.reply_to_message and text.lower().strip()=='дать всё':
   tid=m.reply_to_message.from_user.id
   if uid==tid:return await m.reply("❌ Нельзя перевести самому себе")
@@ -352,9 +510,10 @@ async def handle(m):
   if pv==21:
    win=int(bet*2.5)
    user_balances[uid]=user_balances.get(uid,0)+win
-   user_stats[uid]=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"bj_wins":0}
    user_stats[uid]["played"]+=1
    user_stats[uid]["won"]+=1
+   user_stats[uid]["bj_wins"]=user_stats[uid].get("bj_wins",0)+1
    user_stats[uid]["total_bet"]+=bet
    user_stats[uid]["total_win"]+=win
    user_levels[uid]=user_levels.get(uid,0)+2
@@ -363,6 +522,8 @@ async def handle(m):
    daily_quests["win_3_streak"]["current_streak"][uid]=daily_quests["win_3_streak"]["current_streak"].get(uid,0)+1
    rew3=update_quest_progress(uid,"win_3_streak",daily_quests["win_3_streak"]["current_streak"][uid])
    if rew3:await send_quest_notify(uid,"win_3_streak",rew3,m)
+   new_achs=check_achievements(uid)
+   for ach in new_achs:await send_achievement_notify(uid,ach,m)
    del blackjack_games[uid]
    save_data()
    await m.reply(f"<code>🃏 БЛЭКДЖЕК!\n\n💰 +{format_amount(win)} GRAM</code>",parse_mode="HTML")
@@ -408,6 +569,9 @@ async def handle(m):
   prof=s["total_win"]-s["total_bet"]
   await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GRAM</code>",parse_mode="HTML")
   return
+ if text.lower() in["ачивки","achievements"]:
+  await m.reply(get_achievements_list(uid),parse_mode="HTML")
+  return
  if text.lower()=="бонус":
   now=int(time.time())
   ds=daily_streak.get(uid,{"last":0,"streak":0})
@@ -435,7 +599,7 @@ async def handle(m):
   await m.reply(f"<code>🎯 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!</code>",parse_mode="HTML")
   return
  if text.lower() in["помощь","команды","help"]:
-  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML")
+  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n🎲 КОСТИ: кости 500 на 7\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ ачивки - достижения\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML")
   return
  if text.lower()=="топ":
   if not user_balances:return await m.reply("📊 Пусто")
@@ -496,6 +660,8 @@ async def handle(m):
      daily_quests["win_3_streak"]["current_streak"][b["user_id"]]=0
     rew2=update_quest_progress(b["user_id"],"play_3_games")
     if rew2:await send_quest_notify(b["user_id"],"play_3_games",rew2,m)
+    new_achs=check_achievements(b["user_id"])
+    for ach in new_achs:await send_achievement_notify(b["user_id"],ach,m)
    save_data()
    await m.answer(f"<code>🎲 РУЛЕТКА: {num} {emoji}</code>",parse_mode="HTML")
    for i in range(0,len(all_bets),50):await m.answer("<code>"+"\n".join(all_bets[i:i+50])+"</code>",parse_mode="HTML")
@@ -546,13 +712,15 @@ async def bj_cb(call):
   if pv>21:
    g["active"]=False
    del blackjack_games[uid]
-   user_stats[uid]=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
    user_stats[uid]["played"]+=1
    user_stats[uid]["total_bet"]+=g["bet"]
    user_levels[uid]=user_levels.get(uid,0)+1
    rew=update_quest_progress(uid,"play_3_games")
    if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
    daily_quests["win_3_streak"]["current_streak"][uid]=0
+   new_achs=check_achievements(uid)
+   for ach in new_achs:await send_achievement_notify(uid,ach,call.message)
    save_data()
    await call.message.edit_text(f"<code>🃏 ПЕРЕБОР! ({pv})\n❌ -{format_amount(g['bet'])} GRAM</code>",parse_mode="HTML")
    return
@@ -568,9 +736,11 @@ async def bj_cb(call):
   if dv>21 or pv>dv:win=g["bet"]*2
   elif pv==dv:win=g["bet"]
   if win>0:user_balances[uid]=user_balances.get(uid,0)+win
-  user_stats[uid]=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+  if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"bj_wins":0}
   user_stats[uid]["played"]+=1
-  if win>g["bet"]:user_stats[uid]["won"]+=1
+  if win>g["bet"]:
+   user_stats[uid]["won"]+=1
+   user_stats[uid]["bj_wins"]=user_stats[uid].get("bj_wins",0)+1
   user_stats[uid]["total_bet"]+=g["bet"]
   user_stats[uid]["total_win"]+=win
   user_levels[uid]=user_levels.get(uid,0)+1
@@ -581,6 +751,8 @@ async def bj_cb(call):
    rew2=update_quest_progress(uid,"win_3_streak",daily_quests["win_3_streak"]["current_streak"][uid])
    if rew2:await send_quest_notify(uid,"win_3_streak",rew2,call.message)
   else:daily_quests["win_3_streak"]["current_streak"][uid]=0
+  new_achs=check_achievements(uid)
+  for ach in new_achs:await send_achievement_notify(uid,ach,call.message)
   del blackjack_games[uid]
   save_data()
   await call.message.edit_text(f"<code>🃏 ИГРА ОКОНЧЕНА\n\nВаши карты: {format_cards(g['player_hand'])} ({pv})\nКарты дилера: {format_cards(g['dealer_hand'])} ({dv})\n💰 +{format_amount(win) if win>0 else '0'} GRAM</code>",parse_mode="HTML")
@@ -588,7 +760,7 @@ async def bj_cb(call):
   g["active"]=False
   refund=g["bet"]//2
   user_balances[uid]=user_balances.get(uid,0)+refund
-  user_stats[uid]=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+  if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
   user_stats[uid]["played"]+=1
   user_stats[uid]["total_bet"]+=g["bet"]
   user_levels[uid]=user_levels.get(uid,0)+1
@@ -615,6 +787,8 @@ async def mine_cb(call):
   rew=update_quest_progress(uid,"play_3_games")
   if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
   daily_quests["win_3_streak"]["current_streak"][uid]=0
+  new_achs=check_achievements(uid)
+  for ach in new_achs:await send_achievement_notify(uid,ach,call.message)
   save_data()
   await call.message.edit_text(f"💥 МИНА!\n❌ -{format_amount(g['bet'])} GRAM\n\n{format_mines_field(g['field'],g['revealed'])}")
   return
@@ -632,9 +806,10 @@ async def mine_cash_cb(call):
  g["active"]=False
  win=int(g["bet"]*g["multiplier"])
  user_balances[uid]=user_balances.get(uid,0)+win
- user_stats[uid]=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+ if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"mines_wins":0}
  user_stats[uid]["played"]+=1
  user_stats[uid]["won"]+=1
+ user_stats[uid]["mines_wins"]=user_stats[uid].get("mines_wins",0)+1
  user_stats[uid]["total_bet"]+=g["bet"]
  user_stats[uid]["total_win"]+=win
  user_levels[uid]=user_levels.get(uid,0)+1
@@ -643,6 +818,8 @@ async def mine_cash_cb(call):
  daily_quests["win_3_streak"]["current_streak"][uid]=daily_quests["win_3_streak"]["current_streak"].get(uid,0)+1
  rew2=update_quest_progress(uid,"win_3_streak",daily_quests["win_3_streak"]["current_streak"][uid])
  if rew2:await send_quest_notify(uid,"win_3_streak",rew2,call.message)
+ new_achs=check_achievements(uid)
+ for ach in new_achs:await send_achievement_notify(uid,ach,call.message)
  del mines_games[uid]
  save_data()
  await call.message.edit_text(f"💰 {call.from_user.full_name} забрал выигрыш!\n✅ +{format_amount(win)} GRAM\n💲 Итоговый множитель: x{g['multiplier']:.2f}\n\n{format_mines_field(g['field'],g['revealed'])}")
