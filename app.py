@@ -18,7 +18,7 @@ blackjack_games={}
 pending_bets=[]
 game_in_progress=False
 last_game_time=0
-user_achievements={}  # Список полученных ачивок
+user_achievements={}
 
 ADMIN_ID=6003768110
 GAME_COOLDOWN=15
@@ -42,13 +42,10 @@ achievements_data = {
 }
 
 def check_achievements(uid):
-    """Проверяет и выдает ачивки"""
     if uid not in user_achievements:
         user_achievements[uid] = []
     
-    stats = user_stats.get(uid, {"played":0, "won":0, "total_bet":0, "total_win":0})
-    mines_wins = user_stats.get(uid, {}).get("mines_wins", 0)
-    bj_wins = user_stats.get(uid, {}).get("bj_wins", 0)
+    stats = user_stats.get(uid, {"played":0, "won":0, "total_bet":0, "total_win":0, "mines_wins":0, "bj_wins":0})
     current_streak = daily_quests["win_3_streak"]["current_streak"].get(uid, 0)
     balance = user_balances.get(uid, 0)
     
@@ -61,13 +58,13 @@ def check_achievements(uid):
         earned = False
         if "need_balance" in ach and balance >= ach["need_balance"]:
             earned = True
-        elif "need_games" in ach and stats["played"] >= ach["need_games"]:
+        elif "need_games" in ach and stats.get("played",0) >= ach["need_games"]:
             earned = True
-        elif "need_wins" in ach and stats["won"] >= ach["need_wins"]:
+        elif "need_wins" in ach and stats.get("won",0) >= ach["need_wins"]:
             earned = True
-        elif "need_mines_wins" in ach and mines_wins >= ach["need_mines_wins"]:
+        elif "need_mines_wins" in ach and stats.get("mines_wins",0) >= ach["need_mines_wins"]:
             earned = True
-        elif "need_bj_wins" in ach and bj_wins >= ach["need_bj_wins"]:
+        elif "need_bj_wins" in ach and stats.get("bj_wins",0) >= ach["need_bj_wins"]:
             earned = True
         elif "need_streak" in ach and current_streak >= ach["need_streak"]:
             earned = True
@@ -81,7 +78,6 @@ def check_achievements(uid):
     return new_achievements
 
 def get_achievements_list(uid):
-    """Возвращает список ачивок пользователя"""
     if uid not in user_achievements:
         user_achievements[uid] = []
     
@@ -89,21 +85,21 @@ def get_achievements_list(uid):
     
     for ach_id, ach in achievements_data.items():
         if ach_id in user_achievements[uid]:
-            lines.append(f"✅ {ach['icon']} {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])} GRAM)")
+            lines.append(f"✅ {ach['name']} - {ach['desc']} (+{format_amount(ach['reward'])} GRAM)")
         else:
-            lines.append(f"❌ {ach['icon']} {ach['name']} - {ach['desc']}")
+            lines.append(f"❌ {ach['name']} - {ach['desc']}")
     
     return "\n".join(lines)
 
 # ========== КОСТИ ==========
+VALID_DICE_BETS = ["2","3","4","5","6","7","8","9","10","11","12","дубль","чёт","нечёт","больше","меньше"]
+
 def roll_dice():
     return random.randint(1, 6), random.randint(1, 6)
 
 def get_dice_multiplier(bet_type, d1, d2):
     total = d1 + d2
-    if bet_type == "сумма":
-        return 6 if total == 7 else (5 if total in [6,8] else (4 if total in [5,9] else (3 if total in [4,10] else 2)))
-    elif bet_type == "дубль":
+    if bet_type == "дубль":
         return 10 if d1 == d2 else 0
     elif bet_type == "чёт":
         return 2 if total % 2 == 0 else 0
@@ -118,10 +114,7 @@ def get_dice_multiplier(bet_type, d1, d2):
     return 0
 
 def format_dice(d1, d2):
-    dice_faces = {
-        1: "⚀", 2: "⚁", 3: "⚂",
-        4: "⚃", 5: "⚄", 6: "⚅"
-    }
+    dice_faces = {1:"⚀",2:"⚁",3:"⚂",4:"⚃",5:"⚄",6:"⚅"}
     return f"{dice_faces[d1]} {dice_faces[d2]}"
 
 # ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
@@ -155,7 +148,11 @@ def save_data():
 def init_quests():
  global daily_quests
  if not daily_quests:
-  daily_quests={"play_3_games":{"name":"🎲 Сыграть 3 игры","target":3,"reward":30000,"progress":{},"completed":{}},"win_3_streak":{"name":"🏆 Выиграть 3 раза подряд","target":3,"reward":25000,"progress":{},"completed":{},"current_streak":{}},"make_bet":{"name":"💰 Сделать любую ставку","target":1,"reward":10000,"progress":{},"completed":{}}}
+  daily_quests={
+   "play_3_games":{"name":"🎲 Сыграть 3 игры","target":3,"reward":30000,"progress":{},"completed":{}},
+   "win_3_streak":{"name":"🏆 Выиграть 3 раза подряд","target":3,"reward":25000,"progress":{},"completed":{},"current_streak":{}},
+   "make_bet":{"name":"💰 Сделать любую ставку","target":1,"reward":10000,"progress":{},"completed":{}}
+  }
 
 def check_quests_reset():
  global last_quest_reset
@@ -328,7 +325,7 @@ async def send_quest_notify(uid,qid,reward,msg=None):
  except:pass
 
 async def send_achievement_notify(uid,ach,msg=None):
- text=f"🏆 <b>ДОСТИЖЕНИЕ ПОЛУЧЕНО!</b> 🏆\n\n{ach['icon']} {ach['name']}\n{ach['desc']}\n\n💰 Награда: +{format_amount(ach['reward'])} GRAM"
+ text=f"🏆 <b>ДОСТИЖЕНИЕ ПОЛУЧЕНО!</b> 🏆\n\n{ach['name']}\n{ach['desc']}\n\n💰 Награда: +{format_amount(ach['reward'])} GRAM"
  try:
   if msg:await msg.reply(text,parse_mode="HTML")
   else:await bot.send_message(uid,text,parse_mode="HTML")
@@ -418,14 +415,28 @@ async def handle(m):
  
  # ========== КОСТИ ==========
  if text.lower().startswith("кости "):
-  if len(parts)<3:return await m.reply("❌ Пример: кости 500 на 7\nВарианты: на [2-12], на дубль, на чёт, на нечёт, на больше, на меньше")
+  if len(parts)<3:
+   await m.reply("❌ Пример: кости 500 на 7\nВарианты: на [2-12], на дубль, на чёт, на нечёт, на больше, на меньше")
+   return
   try:bet=int(parts[1])
-  except:return await m.reply("❌ Пример: кости 500 на 7")
-  if bet<100:return await m.reply("❌ Минимальная ставка 100 GRAM")
-  bal=user_balances.get(uid,0)
-  if bet>bal:return await m.reply("❌ Недостаточно GRAM")
+  except:
+   await m.reply("❌ Пример: кости 500 на 7")
+   return
+  if bet<100:
+   await m.reply("❌ Минимальная ставка 100 GRAM")
+   return
   
   bet_type = " ".join(parts[2:]).lower()
+  
+  # ВАЖНО: проверяем допустимые типы ставок
+  if bet_type not in VALID_DICE_BETS:
+   await m.reply(f"❌ Неверный тип ставки!\nВарианты: на [2-12], на дубль, на чёт, на нечёт, на больше, на меньше\nПример: кости 500 на 7")
+   return
+  
+  bal=user_balances.get(uid,0)
+  if bet>bal:
+   await m.reply(f"❌ Недостаточно GRAM, баланс: {format_amount(bal)}")
+   return
   
   user_balances[uid]=bal-bet
   d1,d2=roll_dice()
@@ -435,28 +446,25 @@ async def handle(m):
    win=bet*mult
    user_balances[uid]=user_balances.get(uid,0)+win
    await m.reply(f"🎲 <b>КОСТИ</b>\n\n{format_dice(d1,d2)}\nСумма: {d1+d2}\n\n✅ ВЫ ВЫИГРАЛИ!\n💰 +{format_amount(win)} GRAM (x{mult})",parse_mode="HTML")
-   # Обновляем статистику
    if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
-   user_stats[uid]["played"]+=1
-   user_stats[uid]["won"]+=1
-   user_stats[uid]["total_bet"]+=bet
-   user_stats[uid]["total_win"]+=win
+   user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+   user_stats[uid]["won"]=user_stats[uid].get("won",0)+1
+   user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+bet
+   user_stats[uid]["total_win"]=user_stats[uid].get("total_win",0)+win
    user_levels[uid]=user_levels.get(uid,0)+1
-   # Обновляем задания
    rew=update_quest_progress(uid,"play_3_games")
    if rew:await send_quest_notify(uid,"play_3_games",rew,m)
    daily_quests["win_3_streak"]["current_streak"][uid]=daily_quests["win_3_streak"]["current_streak"].get(uid,0)+1
    rew2=update_quest_progress(uid,"win_3_streak",daily_quests["win_3_streak"]["current_streak"][uid])
    if rew2:await send_quest_notify(uid,"win_3_streak",rew2,m)
-   # Проверяем ачивки
    new_achs=check_achievements(uid)
    for ach in new_achs:
     await send_achievement_notify(uid,ach,m)
   else:
    await m.reply(f"🎲 <b>КОСТИ</b>\n\n{format_dice(d1,d2)}\nСумма: {d1+d2}\n\n❌ ВЫ ПРОИГРАЛИ!\n💸 -{format_amount(bet)} GRAM",parse_mode="HTML")
    if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
-   user_stats[uid]["played"]+=1
-   user_stats[uid]["total_bet"]+=bet
+   user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+   user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+bet
    user_levels[uid]=user_levels.get(uid,0)+1
    rew=update_quest_progress(uid,"play_3_games")
    if rew:await send_quest_notify(uid,"play_3_games",rew,m)
@@ -464,7 +472,7 @@ async def handle(m):
   save_data()
   return
  
- # ========== ОТМЕНА СТАВОК ==========
+ # ========== ОСТАЛЬНЫЕ КОМАНДЫ ==========
  if m.reply_to_message and text.lower().strip()=='дать всё':
   tid=m.reply_to_message.from_user.id
   if uid==tid:return await m.reply("❌ Нельзя перевести самому себе")
@@ -511,11 +519,11 @@ async def handle(m):
    win=int(bet*2.5)
    user_balances[uid]=user_balances.get(uid,0)+win
    if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"bj_wins":0}
-   user_stats[uid]["played"]+=1
-   user_stats[uid]["won"]+=1
+   user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+   user_stats[uid]["won"]=user_stats[uid].get("won",0)+1
    user_stats[uid]["bj_wins"]=user_stats[uid].get("bj_wins",0)+1
-   user_stats[uid]["total_bet"]+=bet
-   user_stats[uid]["total_win"]+=win
+   user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+bet
+   user_stats[uid]["total_win"]=user_stats[uid].get("total_win",0)+win
    user_levels[uid]=user_levels.get(uid,0)+2
    rew2=update_quest_progress(uid,"play_3_games")
    if rew2:await send_quest_notify(uid,"play_3_games",rew2,m)
@@ -643,10 +651,10 @@ async def handle(m):
      win_amt=amt*mult
      user_balances[b["user_id"]]=user_balances.get(b["user_id"],0)+win_amt
      if b["user_id"] not in user_stats:user_stats[b["user_id"]]={"played":0,"won":0,"total_bet":0,"total_win":0}
-     user_stats[b["user_id"]]["played"]+=1
-     user_stats[b["user_id"]]["won"]+=1
-     user_stats[b["user_id"]]["total_bet"]+=amt
-     user_stats[b["user_id"]]["total_win"]+=win_amt
+     user_stats[b["user_id"]]["played"]=user_stats[b["user_id"]].get("played",0)+1
+     user_stats[b["user_id"]]["won"]=user_stats[b["user_id"]].get("won",0)+1
+     user_stats[b["user_id"]]["total_bet"]=user_stats[b["user_id"]].get("total_bet",0)+amt
+     user_stats[b["user_id"]]["total_win"]=user_stats[b["user_id"]].get("total_win",0)+win_amt
      user_levels[b["user_id"]]=user_levels.get(b["user_id"],0)+1
      daily_quests["win_3_streak"]["current_streak"][b["user_id"]]=daily_quests["win_3_streak"]["current_streak"].get(b["user_id"],0)+1
      rew=update_quest_progress(b["user_id"],"win_3_streak",daily_quests["win_3_streak"]["current_streak"][b["user_id"]])
@@ -654,8 +662,8 @@ async def handle(m):
      wins.append(f"{uname} выиграл {format_amount(win_amt)} на {raw}")
     else:
      if b["user_id"] not in user_stats:user_stats[b["user_id"]]={"played":0,"won":0,"total_bet":0,"total_win":0}
-     user_stats[b["user_id"]]["played"]+=1
-     user_stats[b["user_id"]]["total_bet"]+=amt
+     user_stats[b["user_id"]]["played"]=user_stats[b["user_id"]].get("played",0)+1
+     user_stats[b["user_id"]]["total_bet"]=user_stats[b["user_id"]].get("total_bet",0)+amt
      user_levels[b["user_id"]]=user_levels.get(b["user_id"],0)+1
      daily_quests["win_3_streak"]["current_streak"][b["user_id"]]=0
     rew2=update_quest_progress(b["user_id"],"play_3_games")
@@ -698,6 +706,7 @@ async def handle(m):
    acc.append(f"Ставка принята: {name} {format_amount(amt)} GRAM на {b}")
   for i in range(0,len(acc),20):await m.reply("<code>"+"\n".join(acc[i:i+20])+"</code>",parse_mode="HTML")
 
+# ========== КОЛБЭКИ ==========
 @dp.callback_query_handler(lambda c:c.data.startswith("bj_"))
 async def bj_cb(call):
  await call.answer()
@@ -713,8 +722,8 @@ async def bj_cb(call):
    g["active"]=False
    del blackjack_games[uid]
    if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
-   user_stats[uid]["played"]+=1
-   user_stats[uid]["total_bet"]+=g["bet"]
+   user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+   user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+g["bet"]
    user_levels[uid]=user_levels.get(uid,0)+1
    rew=update_quest_progress(uid,"play_3_games")
    if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
@@ -737,12 +746,12 @@ async def bj_cb(call):
   elif pv==dv:win=g["bet"]
   if win>0:user_balances[uid]=user_balances.get(uid,0)+win
   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"bj_wins":0}
-  user_stats[uid]["played"]+=1
+  user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
   if win>g["bet"]:
-   user_stats[uid]["won"]+=1
+   user_stats[uid]["won"]=user_stats[uid].get("won",0)+1
    user_stats[uid]["bj_wins"]=user_stats[uid].get("bj_wins",0)+1
-  user_stats[uid]["total_bet"]+=g["bet"]
-  user_stats[uid]["total_win"]+=win
+  user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+g["bet"]
+  user_stats[uid]["total_win"]=user_stats[uid].get("total_win",0)+win
   user_levels[uid]=user_levels.get(uid,0)+1
   rew=update_quest_progress(uid,"play_3_games")
   if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
@@ -761,8 +770,8 @@ async def bj_cb(call):
   refund=g["bet"]//2
   user_balances[uid]=user_balances.get(uid,0)+refund
   if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0}
-  user_stats[uid]["played"]+=1
-  user_stats[uid]["total_bet"]+=g["bet"]
+  user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+  user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+g["bet"]
   user_levels[uid]=user_levels.get(uid,0)+1
   rew=update_quest_progress(uid,"play_3_games")
   if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
@@ -807,11 +816,11 @@ async def mine_cash_cb(call):
  win=int(g["bet"]*g["multiplier"])
  user_balances[uid]=user_balances.get(uid,0)+win
  if uid not in user_stats:user_stats[uid]={"played":0,"won":0,"total_bet":0,"total_win":0,"mines_wins":0}
- user_stats[uid]["played"]+=1
- user_stats[uid]["won"]+=1
+ user_stats[uid]["played"]=user_stats[uid].get("played",0)+1
+ user_stats[uid]["won"]=user_stats[uid].get("won",0)+1
  user_stats[uid]["mines_wins"]=user_stats[uid].get("mines_wins",0)+1
- user_stats[uid]["total_bet"]+=g["bet"]
- user_stats[uid]["total_win"]+=win
+ user_stats[uid]["total_bet"]=user_stats[uid].get("total_bet",0)+g["bet"]
+ user_stats[uid]["total_win"]=user_stats[uid].get("total_win",0)+win
  user_levels[uid]=user_levels.get(uid,0)+1
  rew=update_quest_progress(uid,"play_3_games")
  if rew:await send_quest_notify(uid,"play_3_games",rew,call.message)
