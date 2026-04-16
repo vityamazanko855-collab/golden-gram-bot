@@ -1875,7 +1875,8 @@ async def lottery_scheduler():
 if __name__ == "__main__":
     load_data()
     init_quests()
-    # Запускаем лотерею в фоне через loop
-    loop = asyncio.get_event_loop()
+    # Создаём loop и запускаем фоновую задачу
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     loop.create_task(lottery_scheduler())
     executor.start_polling(dp, skip_updates=True)
