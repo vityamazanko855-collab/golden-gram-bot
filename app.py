@@ -100,9 +100,19 @@ def get_quests_status(uid):
    lines.append(f"\n  └ {q['name']}: 📊 {prog}/{q['target']}")
  return "\n".join(lines)
 
+# ГЛАВНАЯ КЛАВИАТУРА СО ВСЕМИ КНОПКАМИ
 def get_main_keyboard():
- kb=InlineKeyboardMarkup(row_width=1)
- kb.add(InlineKeyboardButton("🚀 /start",callback_data="menu_start"))
+ kb=InlineKeyboardMarkup(row_width=2)
+ kb.add(
+  InlineKeyboardButton("💰 Баланс",callback_data="menu_balance"),
+  InlineKeyboardButton("📊 Профиль",callback_data="menu_profile"),
+  InlineKeyboardButton("🎲 Рулетка",callback_data="menu_roulette"),
+  InlineKeyboardButton("💣 Мины",callback_data="menu_mines"),
+  InlineKeyboardButton("🃏 Блэкджек",callback_data="menu_blackjack"),
+  InlineKeyboardButton("🎁 Задания",callback_data="menu_quests"),
+  InlineKeyboardButton("🏆 Топ",callback_data="menu_top"),
+  InlineKeyboardButton("❓ Помощь",callback_data="menu_help")
+ )
  return kb
 
 SUITS=["♠","♥","♦","♣"]
@@ -223,7 +233,14 @@ async def send_quest_notify(uid,qid,reward,msg=None):
 @dp.message_handler(commands=["start"])
 async def start_cmd(m):
  init_quests()
- await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - ежедневный бонус\n├ задания - ежедневные задания\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
+ await m.reply(
+  "<code>🎰 GOLDEN GRAM ROULETTE\n\n"
+  "🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n"
+  "💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n"
+  "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
+  parse_mode="HTML",
+  reply_markup=get_main_keyboard()
+ )
 
 @dp.message_handler(commands=["add_grams"])
 async def add_grams(m):
@@ -235,10 +252,40 @@ async def add_grams(m):
   await m.reply(f"✅ +{format_amount(amt)} GRAM")
  except:await m.reply("❌ /add_grams 5000")
 
-@dp.callback_query_handler(lambda c:c.data=="menu_start")
-async def menu_start_cb(call):
+@dp.callback_query_handler(lambda c:c.data.startswith("menu_"))
+async def menu_cb(call):
  await call.answer()
- await start_cmd(call.message)
+ uid=call.from_user.id
+ act=call.data[5:]
+ if act=="balance":
+  await call.message.edit_text(f"💰 <b>Ваш баланс</b>\n\n└ {format_amount(user_balances.get(uid,0))} GRAM",parse_mode="HTML",reply_markup=get_main_keyboard())
+ elif act=="profile":
+  name=call.from_user.full_name
+  bal=user_balances.get(uid,0)
+  s=user_stats.get(uid,{"played":0,"won":0,"total_bet":0,"total_win":0})
+  lvl=get_level(user_levels.get(uid,0))
+  wr=(s["won"]/s["played"]*100)if s["played"]>0 else 0
+  prof=s["total_win"]-s["total_bet"]
+  await call.message.edit_text(f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n└ 💰 {format_amount(bal)} GRAM\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)} GRAM",parse_mode="HTML",reply_markup=get_main_keyboard())
+ elif act=="quests":
+  await call.message.edit_text(f"🎯 <b>ЕЖЕДНЕВНЫЕ ЗАДАНИЯ</b>{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!",parse_mode="HTML",reply_markup=get_main_keyboard())
+ elif act=="top":
+  if not user_balances:return await call.message.edit_text("📊 Пусто",reply_markup=get_main_keyboard())
+  items=sorted(user_balances.items(),key=lambda x:x[1],reverse=True)[:10]
+  txt="🏆 <b>ТОП-10 ИГРОКОВ</b>\n\n"
+  for i,(u,b)in enumerate(items,1):
+   try:n=(await bot.get_chat(u)).full_name
+   except:n=str(u)
+   txt+=f"{i}. {n}\n└ {format_amount(b)} GRAM\n\n"
+  await call.message.edit_text(txt,parse_mode="HTML",reply_markup=get_main_keyboard())
+ else:
+  texts={
+   "roulette":"🎲 <b>СТАВКИ НА РУЛЕТКУ</b>\n\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12",
+   "mines":"💣 <b>ИГРА МИНЫ</b>\n\n├ Команда: мины 100\n├ Поле 5x5, 3 мины\n├ Каждая клетка +0.14x\n└ Максимум x4.0",
+   "blackjack":"🃏 <b>БЛЭКДЖЕК</b>\n\n├ Команда: bj 100\n├ Мин. ставка: 100\n├ Блэкджек: x2.5\n├ Победа: x2\n└ Сдача: 50%",
+   "help":"🎰 <b>GOLDEN GRAM ROULETTE</b>\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)"
+  }
+  await call.message.edit_text(texts.get(act,"❓ Помощь"),parse_mode="HTML",reply_markup=get_main_keyboard())
 
 @dp.message_handler()
 async def handle(m):
@@ -248,6 +295,7 @@ async def handle(m):
  text=m.text.strip()
  if text.lower().startswith('/'):return
  parts=text.split()
+ 
  if m.reply_to_message and text.lower().strip()=='дать всё':
   tid=m.reply_to_message.from_user.id
   if uid==tid:return await m.reply("❌ Нельзя перевести самому себе")
@@ -256,7 +304,7 @@ async def handle(m):
   user_balances[uid]=0
   user_balances[tid]=user_balances.get(tid,0)+bal
   save_data()
-  await m.reply(f"✅ Переведено {format_amount(bal)} GRAM пользователю {m.reply_to_message.from_user.full_name}")
+  await m.reply(f"✅ Переведено {format_amount(bal)} GRAM пользователю {m.reply_to_message.from_user.full_name}",reply_markup=get_main_keyboard())
   return
  if m.reply_to_message and text.lower().startswith('дать') and not text.lower().startswith('дать всё'):
   try:
@@ -270,7 +318,7 @@ async def handle(m):
   user_balances[uid]=bal-amt
   user_balances[tid]=user_balances.get(tid,0)+amt
   save_data()
-  await m.reply(f"✅ Переведено {format_amount(amt)} GRAM пользователю {m.reply_to_message.from_user.full_name}")
+  await m.reply(f"✅ Переведено {format_amount(amt)} GRAM пользователю {m.reply_to_message.from_user.full_name}",reply_markup=get_main_keyboard())
   return
  if text.lower().startswith("bj ") or text.lower().startswith("блекджек "):
   if len(parts)<2:return await m.reply("❌ Пример: bj 100")
@@ -303,7 +351,7 @@ async def handle(m):
    if rew3:await send_quest_notify(uid,"win_3_streak",rew3,m)
    del blackjack_games[uid]
    save_data()
-   await m.reply(f"<code>🃏 БЛЭКДЖЕК!\n\n💰 +{format_amount(win)} GRAM</code>",parse_mode="HTML")
+   await m.reply(f"<code>🃏 БЛЭКДЖЕК!\n\n💰 +{format_amount(win)} GRAM</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
    return
   kb=InlineKeyboardMarkup(row_width=3)
   kb.add(InlineKeyboardButton("🃏 Взять",callback_data="bj_hit"),InlineKeyboardButton("✋ Хватит",callback_data="bj_stand"),InlineKeyboardButton("🏳️ Сдаюсь",callback_data="bj_surrender"))
@@ -333,7 +381,7 @@ async def handle(m):
   pending_bets=[b for b in pending_bets if b["user_id"]!=uid]
   user_balances[uid]=user_balances.get(uid,0)+refund
   save_data()
-  await m.reply(f"✅ Возвращено {format_amount(refund)} GRAM")
+  await m.reply(f"✅ Возвращено {format_amount(refund)} GRAM",reply_markup=get_main_keyboard())
   return
  if text.lower() in["профиль","profile"]:
   bal=user_balances.get(uid,0)
@@ -341,7 +389,7 @@ async def handle(m):
   lvl=get_level(user_levels.get(uid,0))
   wr=(s["won"]/s["played"]*100)if s["played"]>0 else 0
   prof=s["total_win"]-s["total_bet"]
-  await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GRAM</code>",parse_mode="HTML")
+  await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n💰 {format_amount(bal)} GRAM\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GRAM</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower()=="бонус":
   now=int(time.time())
@@ -354,33 +402,33 @@ async def handle(m):
    ds["last"]=now
    daily_streak[uid]=ds
    save_data()
-   await m.reply(f"<code>🎁 +{format_amount(bonus)} GRAM\n🔥 Стрик: {ds['streak']} дн.</code>",parse_mode="HTML")
+   await m.reply(f"<code>🎁 +{format_amount(bonus)} GRAM\n🔥 Стрик: {ds['streak']} дн.</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   else:
    rem=86400-(now-ds["last"])
-   await m.reply(f"<code>⏰ Через {rem//3600} ч {(rem%3600)//60} мин</code>",parse_mode="HTML")
+   await m.reply(f"<code>⏰ Через {rem//3600} ч {(rem%3600)//60} мин</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower() in["б","баланс"]:
-  await m.reply(f"<code>{name}\n💰 Баланс: {format_amount(user_balances.get(uid,0))} GRAM</code>",parse_mode="HTML")
+  await m.reply(f"<code>{name}\n💰 Баланс: {format_amount(user_balances.get(uid,0))} GRAM</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower() in["лог","история"]:
-  if not game_history:return await m.reply("📋 История пуста")
-  await m.reply(f"<code>{chr(10).join(game_history[-10:])}</code>",parse_mode="HTML")
+  if not game_history:return await m.reply("📋 История пуста",reply_markup=get_main_keyboard())
+  await m.reply(f"<code>{chr(10).join(game_history[-10:])}</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower() in["задания","quests"]:
-  await m.reply(f"<code>🎯 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!</code>",parse_mode="HTML")
+  await m.reply(f"<code>🎯 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ{get_quests_status(uid)}\n\n⏰ Обновляются каждые 24 часа\n✨ Награда выдается автоматически!</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower() in["помощь","команды","help"]:
-  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - ежедневный бонус\n├ задания - ежедневные задания\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML")
+  await m.reply("<code>🎰 GOLDEN GRAM ROULETTE\n\n🎲 СТАВКИ:\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12\n\n💣 МИНЫ: мины 100\n🃏 БЛЭКДЖЕК: bj 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ бонус - бонус\n├ задания - задания\n├ го - запуск\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower()=="топ":
-  if not user_balances:return await m.reply("📊 Пусто")
+  if not user_balances:return await m.reply("📊 Пусто",reply_markup=get_main_keyboard())
   items=sorted(user_balances.items(),key=lambda x:x[1],reverse=True)[:10]
   txt="🏆 ТОП-10 ИГРОКОВ\n\n"
   for i,(u,b)in enumerate(items,1):
    try:n=(await bot.get_chat(u)).full_name
    except:n=str(u)
    txt+=f"{i}. {n}\n└ {format_amount(b)} GRAM\n\n"
-  await m.reply(f"<code>{txt}</code>",parse_mode="HTML")
+  await m.reply(f"<code>{txt}</code>",parse_mode="HTML",reply_markup=get_main_keyboard())
   return
  if text.lower()=="го":
   now=int(time.time())
@@ -436,6 +484,7 @@ async def handle(m):
    pending_bets.clear()
    game_in_progress=False
    last_game_time=int(time.time())
+  await m.answer("✅ Игра завершена",reply_markup=get_main_keyboard())
   return
  if len(parts)>=2:
   if game_in_progress:return await m.reply("⏳ Идёт игра")
