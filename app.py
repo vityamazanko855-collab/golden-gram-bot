@@ -25,6 +25,34 @@ user_active_title={}
 user_badges={}
 user_lottery_tickets={}
 
+# ========== АНТИ-СПАМ И АНТИ-ФЛУД ==========
+user_last_command = {}
+user_command_count = {}
+ANTI_FLOOD_SECONDS = 2
+ANTI_SPAM_LIMIT = 5
+ANTI_SPAM_MINUTES = 60
+
+def check_flood(uid):
+    now = time.time()
+    if uid in user_last_command:
+        if now - user_last_command[uid] < ANTI_FLOOD_SECONDS:
+            return True
+    user_last_command[uid] = now
+    return False
+
+def check_spam(uid):
+    now = time.time()
+    if uid not in user_command_count:
+        user_command_count[uid] = {"count": 1, "time": now}
+        return False
+    if now - user_command_count[uid]["time"] > ANTI_SPAM_MINUTES:
+        user_command_count[uid] = {"count": 1, "time": now}
+        return False
+    user_command_count[uid]["count"] += 1
+    if user_command_count[uid]["count"] > ANTI_SPAM_LIMIT:
+        return True
+    return False
+
 ADMIN_ID=6003768110
 GAME_COOLDOWN=15
 DAILY_BONUS_BASE=500
@@ -38,7 +66,7 @@ last_quest_reset=int(time.time())
 last_lottery_time=0
 lottery_pool=0
 
-# ========== ЗНАЧКИ ==========
+# ========== ЗНАЧКИ (БЕЗ ДУБЛИРОВАНИЯ ЭМОДЗИ) ==========
 BADGES = {
     "beginner": {"name": "🟢 НОВИЧОК", "desc": "Сыграть первую игру", "icon": "🟢"},
     "winner": {"name": "🏆 ПОБЕДИТЕЛЬ", "desc": "Выиграть 10 раз", "icon": "🏆"},
@@ -381,9 +409,9 @@ def get_badges_list(uid):
     for i, (bid, badge) in enumerate(items):
         prefix = "└" if i == len(items) - 1 else "├"
         if bid in user_badges[uid]:
-            lines.append(f"{prefix} ✅ {badge['icon']} {badge['name']}")
+            lines.append(f"{prefix} ✅ {badge['name']}")
         else:
-            lines.append(f"{prefix} ❌ {badge['icon']} {badge['name']}")
+            lines.append(f"{prefix} ❌ {badge['name']}")
     return "\n".join(lines)
 
 def get_titles_list(uid):
@@ -885,6 +913,17 @@ async def menu_cb(call):
 @dp.message_handler()
 async def handle(m):
     global pending_bets,game_in_progress,last_game_time,game_history,lottery_pool
+    
+    # АНТИ-ФЛУД
+    if check_flood(m.from_user.id):
+        await m.reply("⏳ Не флуди! Подожди секунду...")
+        return
+    
+    # АНТИ-СПАМ
+    if check_spam(m.from_user.id):
+        await m.reply("🚫 Ты превысил лимит команд! Подожди немного...")
+        return
+    
     if game_in_progress and time.time()-last_game_time>60:
         force_reset_game()
         await m.reply("⚠️ Предыдущая игра принудительно завершена")
@@ -1459,7 +1498,7 @@ async def handle(m):
         await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n🎖️ Звание: {rank['name']}\n🌟 Престиж: {prestige}\n🎖️ Значки: {badges_count}\n🏅 Титул: {active_title}\n💰 {format_amount(bal)} GOLD\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GOLD</code>",parse_mode="HTML")
         return
     
-    # БОНУС
+    # БОНУС (50000 GOLD)
     if text.lower()=="бонус":
         now=int(time.time())
         ds=daily_streak.get(uid,{"last":0,"streak":0})
@@ -1467,7 +1506,7 @@ async def handle(m):
             if now-ds["last"]>=172800:
                 ds["streak"]=0
             ds["streak"]+=1
-            bonus=DAILY_BONUS_BASE+(ds["streak"]-1)*DAILY_BONUS_STREAK_MULTIPLIER
+            bonus = 50000
             user_balances[uid]=user_balances.get(uid,0)+bonus
             ds["last"]=now
             daily_streak[uid]=ds
