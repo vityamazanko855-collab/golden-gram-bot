@@ -795,7 +795,6 @@ async def menu_cb(call):
             pass
         return
     
-    # Получаем текст и клавиатуру для каждого действия
     if act=="balance":
         text = f"💰 <b>Ваш баланс</b>\n\n└ {format_amount(user_balances.get(uid,0))} GOLD"
         reply_markup = get_main_keyboard_page1()
@@ -1860,10 +1859,9 @@ async def lottery_scheduler():
                     prize_per_winner = lottery_pool // winners_count if winners_count > 0 else 0
                     for winner in winners:
                         user_balances[winner] = user_balances.get(winner, 0) + prize_per_winner
-                        if "lottery_win" not in user_stats.get(winner, {}):
-                            if winner not in user_stats:
-                                user_stats[winner] = {}
-                            user_stats[winner]["lottery_win"] = user_stats[winner].get("lottery_win", 0) + 1
+                        if winner not in user_stats:
+                            user_stats[winner] = {}
+                        user_stats[winner]["lottery_win"] = user_stats[winner].get("lottery_win", 0) + 1
                         try:
                             await bot.send_message(winner, f"🎉 <b>ЛОТЕРЕЯ!</b> 🎉\n\nТы выиграл {format_amount(prize_per_winner)} GOLD!", parse_mode="HTML")
                         except:
@@ -1873,8 +1871,11 @@ async def lottery_scheduler():
                     last_lottery_time = time.time()
                     save_data()
 
-if __name__=="__main__":
+# ========== ЗАПУСК ==========
+if __name__ == "__main__":
     load_data()
     init_quests()
-    asyncio.create_task(lottery_scheduler())
-    executor.start_polling(dp,skip_updates=True)
+    # Запускаем лотерею в фоне через loop
+    loop = asyncio.get_event_loop()
+    loop.create_task(lottery_scheduler())
+    executor.start_polling(dp, skip_updates=True)
