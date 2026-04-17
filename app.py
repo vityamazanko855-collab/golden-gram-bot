@@ -45,7 +45,7 @@ DATA_FILE = "bot_data.json"
 daily_quests = {}
 last_quest_reset = int(time.time())
 
-# ========== ДОНАТ ЗА ЗВЁЗДЫ ==========
+# ========== ДОНАТ ЗА ЗВЁЗДЫ (XTR) ==========
 DONATE_OPTIONS = {
     5: {"stars": 5, "reward": 500000, "name": "🌟 5 звёзд", "desc": "500 000 GOLD"},
     15: {"stars": 15, "reward": 1000000, "name": "⭐ 15 звёзд", "desc": "1 000 000 GOLD"},
@@ -53,13 +53,6 @@ DONATE_OPTIONS = {
     50: {"stars": 50, "reward": 5000000, "name": "💫 50 звёзд", "desc": "5 000 000 GOLD"},
     100: {"stars": 100, "reward": 15000000, "name": "🌟 100 звёзд", "desc": "15 000 000 GOLD"}
 }
-
-def get_donate_keyboard():
-    kb = InlineKeyboardMarkup(row_width=1)
-    for key, opt in DONATE_OPTIONS.items():
-        kb.add(InlineKeyboardButton(f"⭐ {opt['name']} - {opt['desc']}", callback_data=f"donate_{key}"))
-    kb.add(InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate"))
-    return kb
 
 # ========== ЗНАЧКИ ==========
 BADGES = {
@@ -917,44 +910,14 @@ def force_reset_game():
     game_in_progress = False
     pending_bets.clear()
 
-# ========== ОБРАБОТЧИКИ ==========
-@dp.message_handler(commands=["start"])
-async def start_cmd(m):
-    init_quests()
-    force_reset_game()
-    
-    args = m.get_args()
-    if args and args.startswith("ref"):
-        try:
-            referrer_id = int(args[3:])
-            if process_referral(m.from_user.id, referrer_id):
-                await m.reply(f"✅ Ты был приглашён! Реферер получил +{format_amount(REFERRAL_REWARD)} GOLD")
-        except:
-            pass
-    
-    await m.reply(
-        "<code>👑 GOLDEN GOLD ROULETTE\n\n"
-        "🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n"
-        "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ донат - поддержать бота\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
-        parse_mode="HTML",
-        reply_markup=get_main_keyboard_page1()
-    )
-
-@dp.message_handler(commands=["add_grams"])
-async def add_grams(m):
-    if m.from_user.id != ADMIN_ID:
-        return await m.reply("❌ Нет прав")
-    try:
-        amt = int(m.text.split()[1])
-        user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amt
-        save_data()
-        await m.reply(f"✅ +{format_amount(amt)} GOLD")
-    except:
-        await m.reply("❌ /add_grams 5000")
-
-# ========== ДОНАТ ==========
+# ========== ДОНАТ (РАБОТАЕТ БЕЗ ПРОВАЙДЕРА) ==========
 @dp.message_handler(commands=["donate"])
 async def donate_cmd(m: Message):
+    kb = InlineKeyboardMarkup(row_width=1)
+    for key, opt in DONATE_OPTIONS.items():
+        kb.add(InlineKeyboardButton(f"⭐ {opt['name']} - {opt['desc']}", callback_data=f"donate_{key}"))
+    kb.add(InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate"))
+    
     await m.reply(
         "⭐ <b>ПОДДЕРЖАТЬ БОТА</b> ⭐\n\n"
         "Выбери сумму доната:\n\n"
@@ -965,28 +928,32 @@ async def donate_cmd(m: Message):
         "🌟 100 звёзд → 15 000 000 GOLD\n\n"
         "👇 Нажми на кнопку ниже, чтобы выбрать сумму",
         parse_mode="HTML",
-        reply_markup=get_donate_keyboard()
+        reply_markup=kb
     )
 
-@dp.callback_query_handler(lambda c: c.data.startswith("donate_"))
+@dp.callback_query_handler(lambda c: c.data.startswith("donate_") and c.data != "cancel_donate")
 async def donate_stars_cb(call: CallbackQuery):
     await call.answer()
     stars = int(call.data.split("_")[1])
     option = DONATE_OPTIONS[stars]
     
-    await bot.send_invoice(
-        chat_id=call.from_user.id,
-        title=f"⭐ {option['name']}",
-        description=f"Поддержи проект! Ты получишь {option['desc']}",
-        payload=f"donate_{stars}",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label=f"⭐ {stars} звёзд", amount=stars)],
-        start_parameter=f"donate_{stars}",
-        reply_markup=InlineKeyboardMarkup().add(
-            InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate")
+    try:
+        await bot.send_invoice(
+            chat_id=call.from_user.id,
+            title=f"⭐ {option['name']}",
+            description=f"Поддержи проект! Ты получишь {option['desc']}",
+            payload=f"donate_{stars}",
+            provider_token="",
+            currency="XTR",
+            prices=[LabeledPrice(label=f"⭐ {stars} звёзд", amount=stars)],
+            start_parameter=f"donate_{stars}",
+            reply_markup=InlineKeyboardMarkup().add(
+                InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate")
+            )
         )
-    )
+    except Exception as e:
+        logging.error(f"Ошибка при отправке инвойса: {e}")
+        await call.message.reply("❌ Ошибка при создании платежа. Попробуй позже.")
 
 @dp.pre_checkout_query_handler(lambda query: True)
 async def process_pre_checkout_query(query: PreCheckoutQuery):
@@ -996,7 +963,6 @@ async def process_pre_checkout_query(query: PreCheckoutQuery):
 async def process_successful_payment(m: Message):
     uid = m.from_user.id
     payload = m.successful_payment.invoice_payload
-    stars_amount = m.successful_payment.total_amount
     
     if payload.startswith("donate_"):
         stars = int(payload.split("_")[1])
@@ -1009,7 +975,7 @@ async def process_successful_payment(m: Message):
         user_stats[uid]["donated"] = user_stats[uid].get("donated", 0) + 1
         save_data()
         
-        # Проверяем новый значок
+        # Проверяем значок донатера
         new_badges = check_badges(uid)
         for badge in new_badges:
             await send_badge_notify(uid, badge, m)
@@ -1042,9 +1008,44 @@ async def cancel_donate_cb(call: CallbackQuery):
     await call.answer("❌ Донат отменён")
     await call.message.delete()
 
+# ========== ОБРАБОТЧИКИ ==========
+@dp.message_handler(commands=["start"])
+async def start_cmd(m: Message):
+    init_quests()
+    force_reset_game()
+    
+    args = m.get_args()
+    if args and args.startswith("ref"):
+        try:
+            referrer_id = int(args[3:])
+            if process_referral(m.from_user.id, referrer_id):
+                await m.reply(f"✅ Ты был приглашён! Реферер получил +{format_amount(REFERRAL_REWARD)} GOLD")
+        except:
+            pass
+    
+    await m.reply(
+        "<code>👑 GOLDEN GOLD ROULETTE\n\n"
+        "🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n"
+        "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ донат - поддержать бота\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard_page1()
+    )
+
+@dp.message_handler(commands=["add_grams"])
+async def add_grams(m: Message):
+    if m.from_user.id != ADMIN_ID:
+        return await m.reply("❌ Нет прав")
+    try:
+        amt = int(m.text.split()[1])
+        user_balances[ADMIN_ID] = user_balances.get(ADMIN_ID, 0) + amt
+        save_data()
+        await m.reply(f"✅ +{format_amount(amt)} GOLD")
+    except:
+        await m.reply("❌ /add_grams 5000")
+
 # ========== МЕНЮ ==========
 @dp.callback_query_handler(lambda c: c.data.startswith("menu_"))
-async def menu_cb(call):
+async def menu_cb(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
     act = call.data[5:]
@@ -1087,9 +1088,10 @@ async def menu_cb(call):
         active_title = user_active_title.get(uid, "Не выбран")
         badges_count = len(user_badges.get(uid, []))
         referrals = user_referrals.get(uid, 0)
+        donated = s.get("donated", 0)
         wr = (s["won"] / s["played"] * 100) if s["played"] > 0 else 0
         prof = s["total_win"] - s["total_bet"]
-        text = f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n├ 🎖️ Звание: {rank['name']}\n├ 🌟 Престиж: {prestige}\n├ 🎖️ Значки: {badges_count}\n├ 🏅 Титул: {active_title}\n├ 👥 Пригласил: {referrals}\n└ 💰 {format_amount(bal)} GOLD\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)} GOLD"
+        text = f"👤 <b>{name}</b>\n├ 🆔 {uid}\n├ 📊 Уровень: {lvl}\n├ 🎖️ Звание: {rank['name']}\n├ 🌟 Престиж: {prestige}\n├ 🎖️ Значки: {badges_count}\n├ 🏅 Титул: {active_title}\n├ 👥 Пригласил: {referrals}\n├ ⭐ Донатов: {donated}\n└ 💰 {format_amount(bal)} GOLD\n\n📊 <b>Статистика</b>\n├ 🎲 Игр: {s['played']}\n├ 🏆 Побед: {s['won']}\n├ 📈 Винрейт: {wr:.1f}%\n└ 📊 Профит: {format_amount(prof)} GOLD"
     elif act == "roulette":
         text = "🎲 <b>СТАВКИ НА РУЛЕТКУ</b>\n\n├ 100 чёрное\n├ 250 красное\n├ 500 чётное\n├ 1000 14\n├ 2000 0\n└ 5000 1-12"
     elif act == "dice":
@@ -1165,7 +1167,7 @@ async def menu_cb(call):
 
 # ========== ОСНОВНОЙ ОБРАБОТЧИК ==========
 @dp.message_handler()
-async def handle(m):
+async def handle(m: Message):
     global pending_bets, game_in_progress, last_game_time, game_history
     
     if game_in_progress and time.time() - last_game_time > 60:
@@ -1198,11 +1200,6 @@ async def handle(m):
         link = generate_referral_link(uid)
         referrals = user_referrals.get(uid, 0)
         await m.reply(f"👥 <b>РЕФЕРАЛЬНАЯ СИСТЕМА</b>\n\n├ 👥 Приглашено: {referrals}\n├ 💰 Награда за друга: +{format_amount(REFERRAL_REWARD)} GOLD\n└ 🔗 Твоя ссылка:\n{link}", parse_mode="HTML")
-        return
-    
-    # ========== ДОНАТ ==========
-    if text.lower() == "донат" or text.lower() == "donate":
-        await donate_cmd(m)
         return
     
     # ========== БОНУС ==========
@@ -2142,7 +2139,7 @@ async def handle(m):
 
 # ========== КОЛБЭКИ БЛЭКДЖЕКА ==========
 @dp.callback_query_handler(lambda c: c.data.startswith("bj_"))
-async def bj_cb(call):
+async def bj_cb(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
     if uid not in blackjack_games:
@@ -2244,7 +2241,7 @@ async def bj_cb(call):
 
 # ========== КОЛБЭКИ МИН ==========
 @dp.callback_query_handler(lambda c: c.data.startswith("m_"))
-async def mine_cb(call):
+async def mine_cb(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
     if uid not in mines_games:
@@ -2280,7 +2277,7 @@ async def mine_cb(call):
     await call.message.edit_text(f"💎 {call.from_user.full_name}\n📌 Ставка: {format_amount(g['bet'])} GOLD\n💲 Выигрыш: x{g['multiplier']:.2f} | {format_amount(pot)} GOLD\n\n{format_mines_field(g['field'], g['revealed'])}", reply_markup=get_mines_keyboard(g['field'], g['revealed']))
 
 @dp.callback_query_handler(lambda c: c.data == "cash")
-async def mine_cash_cb(call):
+async def mine_cash_cb(call: CallbackQuery):
     await call.answer()
     uid = call.from_user.id
     if uid not in mines_games:
