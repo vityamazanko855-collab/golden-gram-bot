@@ -31,9 +31,9 @@ used_promocodes={}
 # ========== АНТИ-СПАМ И АНТИ-ФЛУД ==========
 user_last_command = {}
 user_command_count = {}
-ANTI_FLOOD_SECONDS = 2
-ANTI_SPAM_LIMIT = 5
-ANTI_SPAM_MINUTES = 60
+ANTI_FLOOD_SECONDS = 3
+ANTI_SPAM_LIMIT = 3
+ANTI_SPAM_MINUTES = 30
 
 def check_flood(uid):
     now = time.time()
@@ -162,40 +162,36 @@ RPS_CHOICES = {"камень": "✊", "ножницы": "✌️", "бумага"
 RPS_WIN = {"камень": "ножницы", "ножницы": "бумага", "бумага": "камень"}
 
 # ========== НОВЫЕ ИГРЫ ==========
-# Боулинг
 def play_bowling():
     return random.randint(0, 10)
 
-# Коробки
 BOX_REWARDS = {1: 5, 2: 2, 3: 0.5}
 def choose_box(box_num):
     return BOX_REWARDS.get(box_num, 0)
 
-# Дартс
 def throw_dart():
     r = random.randint(1, 100)
     if r <= 5:
-        return "bullseye"  # x10
+        return "bullseye"
     elif r <= 20:
-        return "inner"      # x5
+        return "inner"
     elif r <= 50:
-        return "outer"      # x2
+        return "outer"
     else:
-        return "miss"       # x0
+        return "miss"
 
 DART_MULT = {"bullseye": 10, "inner": 5, "outer": 2, "miss": 0}
 
-# Баскетбол
 def shoot_ball():
     r = random.randint(1, 100)
     if r <= 10:
-        return "three_point"  # x3
+        return "three_point"
     elif r <= 30:
-        return "two_point"    # x2
+        return "two_point"
     elif r <= 60:
-        return "free_throw"   # x1
+        return "free_throw"
     else:
-        return "miss"         # x0
+        return "miss"
 
 BASKET_MULT = {"three_point": 3, "two_point": 2, "free_throw": 1, "miss": 0}
 
@@ -203,7 +199,7 @@ BASKET_MULT = {"three_point": 3, "two_point": 2, "free_throw": 1, "miss": 0}
 REFERRAL_REWARD = 30000
 
 def generate_referral_link(uid):
-    return f"https://t.me/{bot.username}?start=ref{uid}"
+    return f"https://t.me/Golden_Gram_Roulette_Bot?start=ref{uid}"
 
 def process_referral(new_uid, referrer_uid):
     if new_uid not in user_referrer and new_uid != referrer_uid:
@@ -316,7 +312,8 @@ def load_data():
             lottery_pool=d.get("lottery_pool",0)
             user_referrals=d.get("user_referrals",{})
             user_referrer=d.get("user_referrer",{})
-            PROMOCODES["Gold2026"]["used"] = d.get("used_promocodes", {})
+            if "Gold2026" in PROMOCODES:
+                PROMOCODES["Gold2026"]["used"] = d.get("used_promocodes", {})
     except:
         pass
 
@@ -340,7 +337,7 @@ def save_data():
             "lottery_pool":lottery_pool,
             "user_referrals":user_referrals,
             "user_referrer":user_referrer,
-            "used_promocodes":PROMOCODES["Gold2026"]["used"]
+            "used_promocodes":PROMOCODES["Gold2026"]["used"] if "Gold2026" in PROMOCODES else {}
         },f,ensure_ascii=False,indent=2)
 
 # ========== ПРОВЕРКИ АЧИВОК, ЗНАЧКОВ, ТИТУЛОВ ==========
@@ -883,16 +880,18 @@ async def start_cmd(m):
     init_quests()
     force_reset_game()
     
-    # Обработка реферальной ссылки
     args = m.get_args()
     if args and args.startswith("ref"):
-        referrer_id = int(args[3:])
-        if process_referral(m.from_user.id, referrer_id):
-            await m.reply(f"✅ Ты был приглашён! Реферер получил +{format_amount(REFERRAL_REWARD)} GOLD")
+        try:
+            referrer_id = int(args[3:])
+            if process_referral(m.from_user.id, referrer_id):
+                await m.reply(f"✅ Ты был приглашён! Реферер получил +{format_amount(REFERRAL_REWARD)} GOLD")
+        except:
+            pass
     
     await m.reply(
         "<code>👑 GOLDEN GOLD ROULETTE\n\n"
-        "🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Лотерея: лотерея 1000\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Коробки: коробки 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n"
+        "🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Лотерея: лотерея 1000\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Коробки: коробки 100 1\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n"
         "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
         parse_mode="HTML",
         reply_markup=get_main_keyboard_page1()
@@ -2049,10 +2048,13 @@ async def handle(m):
                     await send_badge_notify(b["user_id"],badge,m)
             save_data()
             await m.answer(f"<code>🎲 РУЛЕТКА: {num} {emoji}</code>",parse_mode="HTML")
+            # Отправляем с задержкой
             for i in range(0,len(all_bets),50):
                 await m.answer("<code>"+"\n".join(all_bets[i:i+50])+"</code>",parse_mode="HTML")
+                await asyncio.sleep(0.5)
             for i in range(0,len(wins),50):
                 await m.answer("<code>"+"\n".join(wins[i:i+50])+"</code>",parse_mode="HTML")
+                await asyncio.sleep(0.5)
         except Exception as e:
             logging.error(f"Ошибка: {e}")
             await m.answer("❌ Ошибка, ставки возвращены")
@@ -2092,8 +2094,10 @@ async def handle(m):
                 continue
             pending_bets.append({"user_id":uid,"user_name":name,"amount":amt,"raw_bet":b})
             acc.append(f"Ставка принята: {name} {format_amount(amt)} GOLD на {b}")
-        for i in range(0,len(acc),20):
-            await m.reply("<code>"+"\n".join(acc[i:i+20])+"</code>",parse_mode="HTML")
+        # Отправляем с задержкой
+        for i in range(0,len(acc),5):
+            await m.reply("<code>"+"\n".join(acc[i:i+5])+"</code>", parse_mode="HTML")
+            await asyncio.sleep(1)
 
 # ========== КОЛБЭКИ БЛЭКДЖЕКА ==========
 @dp.callback_query_handler(lambda c:c.data.startswith("bj_"))
