@@ -6,7 +6,7 @@ import random
 import time
 import json
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils import executor
 
 API_TOKEN = os.environ.get("BOT_TOKEN", "8723084939:AAEO8Jd5oLYsAN-JMht4CBh2MUy_XWxH94M")
@@ -45,6 +45,22 @@ DATA_FILE = "bot_data.json"
 daily_quests = {}
 last_quest_reset = int(time.time())
 
+# ========== ДОНАТ ЗА ЗВЁЗДЫ ==========
+DONATE_OPTIONS = {
+    5: {"stars": 5, "reward": 500000, "name": "🌟 5 звёзд", "desc": "500 000 GOLD"},
+    15: {"stars": 15, "reward": 1000000, "name": "⭐ 15 звёзд", "desc": "1 000 000 GOLD"},
+    25: {"stars": 25, "reward": 2500000, "name": "✨ 25 звёзд", "desc": "2 500 000 GOLD"},
+    50: {"stars": 50, "reward": 5000000, "name": "💫 50 звёзд", "desc": "5 000 000 GOLD"},
+    100: {"stars": 100, "reward": 15000000, "name": "🌟 100 звёзд", "desc": "15 000 000 GOLD"}
+}
+
+def get_donate_keyboard():
+    kb = InlineKeyboardMarkup(row_width=1)
+    for key, opt in DONATE_OPTIONS.items():
+        kb.add(InlineKeyboardButton(f"⭐ {opt['name']} - {opt['desc']}", callback_data=f"donate_{key}"))
+    kb.add(InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate"))
+    return kb
+
 # ========== ЗНАЧКИ ==========
 BADGES = {
     "beginner": {"name": "🟢 НОВИЧОК", "desc": "Сыграть первую игру", "icon": "🟢"},
@@ -64,7 +80,8 @@ BADGES = {
     "bowler": {"name": "🎳 БОУЛЕР", "desc": "Выбить страйк в боулинге", "icon": "🎳"},
     "dart_master": {"name": "🎯 МАСТЕР ДАРТСА", "desc": "Попасть в яблочко", "icon": "🎯"},
     "basketball_star": {"name": "🏀 ЗВЕЗДА", "desc": "Забить трёхочковый", "icon": "🏀"},
-    "referrer": {"name": "👥 ЛИДЕР", "desc": "Привести 10 друзей", "icon": "👥"}
+    "referrer": {"name": "👥 ЛИДЕР", "desc": "Привести 10 друзей", "icon": "👥"},
+    "donator": {"name": "⭐ МЕЦЕНАТ", "desc": "Поддержать бота донатом", "icon": "⭐"}
 }
 
 # ========== ЗВАНИЯ ==========
@@ -399,6 +416,8 @@ def check_badges(uid):
             earned = True
         elif bid == "referrer" and referrals >= 10:
             earned = True
+        elif bid == "donator" and stats.get("donated", 0) >= 1:
+            earned = True
         if earned:
             user_badges[uid].append(bid)
             user_balances[uid] = user_balances.get(uid, 0) + 50000
@@ -583,6 +602,7 @@ def get_main_keyboard_page2():
         InlineKeyboardButton("🏀 Баскетбол", callback_data="menu_basketball"),
         InlineKeyboardButton("👥 Рефералы", callback_data="menu_referral"),
         InlineKeyboardButton("🎫 Промокод", callback_data="menu_promo"),
+        InlineKeyboardButton("⭐ Донат", callback_data="menu_donate"),
         InlineKeyboardButton("⬅️ НАЗАД", callback_data="menu_page1"),
         InlineKeyboardButton("➡️ ДАЛЕЕ", callback_data="menu_page3")
     )
@@ -915,7 +935,7 @@ async def start_cmd(m):
     await m.reply(
         "<code>👑 GOLDEN GOLD ROULETTE\n\n"
         "🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n"
-        "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
+        "📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ донат - поддержать бота\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>",
         parse_mode="HTML",
         reply_markup=get_main_keyboard_page1()
     )
@@ -931,6 +951,96 @@ async def add_grams(m):
         await m.reply(f"✅ +{format_amount(amt)} GOLD")
     except:
         await m.reply("❌ /add_grams 5000")
+
+# ========== ДОНАТ ==========
+@dp.message_handler(commands=["donate"])
+async def donate_cmd(m: Message):
+    await m.reply(
+        "⭐ <b>ПОДДЕРЖАТЬ БОТА</b> ⭐\n\n"
+        "Выбери сумму доната:\n\n"
+        "🌟 5 звёзд → 500 000 GOLD\n"
+        "⭐ 15 звёзд → 1 000 000 GOLD\n"
+        "✨ 25 звёзд → 2 500 000 GOLD\n"
+        "💫 50 звёзд → 5 000 000 GOLD\n"
+        "🌟 100 звёзд → 15 000 000 GOLD\n\n"
+        "👇 Нажми на кнопку ниже, чтобы выбрать сумму",
+        parse_mode="HTML",
+        reply_markup=get_donate_keyboard()
+    )
+
+@dp.callback_query_handler(lambda c: c.data.startswith("donate_"))
+async def donate_stars_cb(call: CallbackQuery):
+    await call.answer()
+    stars = int(call.data.split("_")[1])
+    option = DONATE_OPTIONS[stars]
+    
+    await bot.send_invoice(
+        chat_id=call.from_user.id,
+        title=f"⭐ {option['name']}",
+        description=f"Поддержи проект! Ты получишь {option['desc']}",
+        payload=f"donate_{stars}",
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label=f"⭐ {stars} звёзд", amount=stars)],
+        start_parameter=f"donate_{stars}",
+        reply_markup=InlineKeyboardMarkup().add(
+            InlineKeyboardButton("❌ Отмена", callback_data="cancel_donate")
+        )
+    )
+
+@dp.pre_checkout_query_handler(lambda query: True)
+async def process_pre_checkout_query(query: PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(query.id, ok=True)
+
+@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
+async def process_successful_payment(m: Message):
+    uid = m.from_user.id
+    payload = m.successful_payment.invoice_payload
+    stars_amount = m.successful_payment.total_amount
+    
+    if payload.startswith("donate_"):
+        stars = int(payload.split("_")[1])
+        option = DONATE_OPTIONS[stars]
+        reward = option["reward"]
+        
+        user_balances[uid] = user_balances.get(uid, 0) + reward
+        if uid not in user_stats:
+            user_stats[uid] = {}
+        user_stats[uid]["donated"] = user_stats[uid].get("donated", 0) + 1
+        save_data()
+        
+        # Проверяем новый значок
+        new_badges = check_badges(uid)
+        for badge in new_badges:
+            await send_badge_notify(uid, badge, m)
+        
+        await m.reply(
+            f"⭐ <b>СПАСИБО ЗА ПОДДЕРЖКУ!</b> ⭐\n\n"
+            f"Ты отправил {stars} звёзд!\n"
+            f"💰 Награда: +{format_amount(reward)} GOLD\n\n"
+            f"💳 Новый баланс: {format_amount(user_balances[uid])} GOLD\n\n"
+            f"✨ Ты получил значок ⭐ МЕЦЕНАТ!",
+            parse_mode="HTML"
+        )
+        
+        # Уведомление админу
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"⭐ <b>НОВЫЙ ДОНАТ!</b> ⭐\n\n"
+                f"👤 {m.from_user.full_name}\n"
+                f"🆔 {uid}\n"
+                f"⭐ Звёзд: {stars}\n"
+                f"💰 Выдано GOLD: {format_amount(reward)}",
+                parse_mode="HTML"
+            )
+        except:
+            pass
+
+@dp.callback_query_handler(lambda c: c.data == "cancel_donate")
+async def cancel_donate_cb(call: CallbackQuery):
+    await call.answer("❌ Донат отменён")
+    await call.message.delete()
 
 # ========== МЕНЮ ==========
 @dp.callback_query_handler(lambda c: c.data.startswith("menu_"))
@@ -960,7 +1070,7 @@ async def menu_cb(call):
     
     if act in ["balance", "profile", "roulette", "dice", "slot", "wheel"]:
         reply_markup = get_main_keyboard_page1()
-    elif act in ["rps", "sport", "bowling", "darts", "basketball", "referral", "promo"]:
+    elif act in ["rps", "sport", "bowling", "darts", "basketball", "referral", "promo", "donate"]:
         reply_markup = get_main_keyboard_page2()
     else:
         reply_markup = get_main_keyboard_page3()
@@ -1004,6 +1114,8 @@ async def menu_cb(call):
         text = f"👥 <b>РЕФЕРАЛЬНАЯ СИСТЕМА</b>\n\n├ 👥 Приглашено: {referrals}\n├ 💰 Награда за друга: +{format_amount(REFERRAL_REWARD)} GOLD\n└ 🔗 Твоя ссылка:\n{link}"
     elif act == "promo":
         text = "🎫 <b>ПРОМОКОДЫ</b>\n\n├ 🏷️ Gold2026 - 100 000 GOLD\n└ 📝 Введи: промокод Gold2026"
+    elif act == "donate":
+        text = "⭐ <b>ДОНАТ</b>\n\nПоддержи развитие бота!\n\n💰 За каждые звёзды ты получаешь GOLD:\n🌟 5 звёзд → 500 000 GOLD\n⭐ 15 звёзд → 1 000 000 GOLD\n✨ 25 звёзд → 2 500 000 GOLD\n💫 50 звёзд → 5 000 000 GOLD\n🌟 100 звёзд → 15 000 000 GOLD\n\nНапиши /donate, чтобы поддержать проект"
     elif act == "mines":
         text = "💣 <b>ИГРА МИНЫ</b>\n\n├ Команда: мины 100\n├ Поле 5x5, 3 мины\n├ Каждая клетка +0.14x\n└ Максимум x4.0"
     elif act == "blackjack":
@@ -1039,7 +1151,7 @@ async def menu_cb(call):
                 txt += f"{i}. {n}\n└ {format_amount(b)} GOLD\n\n"
             text = txt
     elif act == "help":
-        text = "👑 <b>GOLDEN GOLD ROULETTE</b>\n\n🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)"
+        text = "👑 <b>GOLDEN GOLD ROULETTE</b>\n\n🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ донат - поддержать бота\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)"
     else:
         text = "❓ Помощь"
     
@@ -1088,6 +1200,11 @@ async def handle(m):
         await m.reply(f"👥 <b>РЕФЕРАЛЬНАЯ СИСТЕМА</b>\n\n├ 👥 Приглашено: {referrals}\n├ 💰 Награда за друга: +{format_amount(REFERRAL_REWARD)} GOLD\n└ 🔗 Твоя ссылка:\n{link}", parse_mode="HTML")
         return
     
+    # ========== ДОНАТ ==========
+    if text.lower() == "донат" or text.lower() == "donate":
+        await donate_cmd(m)
+        return
+    
     # ========== БОНУС ==========
     if text.lower() == "бонус":
         now = int(time.time())
@@ -1122,9 +1239,10 @@ async def handle(m):
         active_title = user_active_title.get(uid, "Не выбран")
         badges_count = len(user_badges.get(uid, []))
         referrals = user_referrals.get(uid, 0)
+        donated = s.get("donated", 0)
         wr = (s["won"] / s["played"] * 100) if s["played"] > 0 else 0
         prof = s["total_win"] - s["total_bet"]
-        await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n🎖️ Звание: {rank['name']}\n🌟 Престиж: {prestige}\n🎖️ Значки: {badges_count}\n🏅 Титул: {active_title}\n👥 Пригласил: {referrals}\n💰 {format_amount(bal)} GOLD\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GOLD</code>", parse_mode="HTML")
+        await m.reply(f"<code>👤 {name}\n🆔 {uid}\n📊 Уровень: {lvl}\n🎖️ Звание: {rank['name']}\n🌟 Престиж: {prestige}\n🎖️ Значки: {badges_count}\n🏅 Титул: {active_title}\n👥 Пригласил: {referrals}\n⭐ Донатов: {donated}\n💰 {format_amount(bal)} GOLD\n\n🎲 Игр: {s['played']}\n🏆 Побед: {s['won']}\n📈 Винрейт: {wr:.1f}%\n📊 Профит: {format_amount(prof)} GOLD</code>", parse_mode="HTML")
         return
     
     # ========== РАНГ ==========
@@ -2019,7 +2137,7 @@ async def handle(m):
     
     # ========== ПОМОЩЬ ==========
     if text.lower() in ["помощь", "команды", "help"]:
-        await m.reply("<code>👑 GOLDEN GOLD ROULETTE\n\n🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>", parse_mode="HTML")
+        await m.reply("<code>👑 GOLDEN GOLD ROULETTE\n\n🎲 ИГРЫ:\n├ Рулетка: 100 чёрное\n├ Кости: кости 500 на 7\n├ Слот: слот 100\n├ Колесо: колесо 100\n├ КНБ: кнб 500 камень\n├ Спорт: спорт 500 1\n├ Мины: мины 100\n├ Блэкджек: bj 100\n├ Боулинг: боулинг 100\n├ Дартс: дартс 100\n├ Баскетбол: баскетбол 100\n\n📌 КОМАНДЫ:\n├ б - баланс\n├ профиль - статистика\n├ топ - топ игроков\n├ достижения - список достижений\n├ значки - список значков\n├ титулы - список титулов\n├ прогресс - прогресс\n├ престиж - престиж\n├ ранг - звание\n├ бонус - бонус\n├ задания - задания\n├ рефка - реферальная ссылка\n├ промокод Gold2026 - 100 000 GOLD\n├ донат - поддержать бота\n├ го - запуск рулетки\n├ отмена - отмена ставок\n├ дать 500 (ответом)\n└ дать всё (ответом)</code>", parse_mode="HTML")
         return
 
 # ========== КОЛБЭКИ БЛЭКДЖЕКА ==========
