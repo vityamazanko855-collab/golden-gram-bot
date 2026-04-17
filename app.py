@@ -565,7 +565,7 @@ def get_quests_status(uid):
             lines.append(f"\n  └ {q['name']}: 📊 {prog}/{q['target']}")
     return "\n".join(lines)
 
-# ========== КЛАВИАТУРЫ С ТРЕМЯ СТРАНИЦАМИ ==========
+# ========== КЛАВИАТУРЫ С ТРЕМЯ СТРАНИЦАМИ И КНОПКОЙ НАЗАД ==========
 def get_main_keyboard_page1():
     kb=InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -591,6 +591,7 @@ def get_main_keyboard_page2():
         InlineKeyboardButton("📦 Коробки",callback_data="menu_boxes"),
         InlineKeyboardButton("👥 Рефералы",callback_data="menu_referral"),
         InlineKeyboardButton("🎫 Промокод",callback_data="menu_promo"),
+        InlineKeyboardButton("⬅️ НАЗАД",callback_data="menu_page1"),
         InlineKeyboardButton("➡️ ДАЛЕЕ",callback_data="menu_page3")
     )
     return kb
@@ -611,7 +612,6 @@ def get_main_keyboard_page3():
         InlineKeyboardButton("⬅️ НАЗАД",callback_data="menu_page2")
     )
     return kb
-
 # ========== ИГРЫ ==========
 SUITS=["♠","♥","♦","♣"]
 RANKS_CARDS=["2","3","4","5","6","7","8","9","10","J","Q","K","A"]
