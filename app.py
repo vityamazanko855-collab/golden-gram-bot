@@ -395,48 +395,51 @@ def get_quests_status(uid):
   else:lines.append(f"\n  └ {q['name']}: 📊 {prog}/{q['target']}")
  return"\n".join(lines)
 
+# ========== КЛАВИАТУРЫ С 3 СТРАНИЦАМИ (ИСПРАВЛЕННАЯ НАВИГАЦИЯ) ==========
 def get_main_keyboard_page1():
- kb=InlineKeyboardMarkup(row_width=2)
- kb.add(
-  InlineKeyboardButton("💰 Баланс",callback_data="menu_balance"),
-  InlineKeyboardButton("📊 Профиль",callback_data="menu_profile"),
-  InlineKeyboardButton("🎲 Рулетка",callback_data="menu_roulette"),
-  InlineKeyboardButton("🎲 Кости",callback_data="menu_dice"),
-  InlineKeyboardButton("🎰 Слот",callback_data="menu_slot"),
-  InlineKeyboardButton("🎡 Колесо",callback_data="menu_wheel"),
-  InlineKeyboardButton("➡️ ДАЛЕЕ",callback_data="menu_page2")
- )
- return kb
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("💰 Баланс", callback_data="menu_balance"),
+        InlineKeyboardButton("📊 Профиль", callback_data="menu_profile"),
+        InlineKeyboardButton("🎲 Рулетка", callback_data="menu_roulette"),
+        InlineKeyboardButton("🎲 Кости", callback_data="menu_dice"),
+        InlineKeyboardButton("🎰 Слот", callback_data="menu_slot"),
+        InlineKeyboardButton("🎡 Колесо", callback_data="menu_wheel"),
+        InlineKeyboardButton("➡️ ДАЛЕЕ", callback_data="menu_page2")
+    )
+    return kb
+
 def get_main_keyboard_page2():
- kb=InlineKeyboardMarkup(row_width=2)
- kb.add(
-  InlineKeyboardButton("✊ КНБ",callback_data="menu_rps"),
-  InlineKeyboardButton("⚽ Спорт",callback_data="menu_sport"),
-  InlineKeyboardButton("🎳 Боулинг",callback_data="menu_bowling"),
-  InlineKeyboardButton("🎯 Дартс",callback_data="menu_darts"),
-  InlineKeyboardButton("🏀 Баскетбол",callback_data="menu_basketball"),
-  InlineKeyboardButton("👥 Рефералы",callback_data="menu_referral"),
-  InlineKeyboardButton("🎫 Промокод",callback_data="menu_promo"),
-  InlineKeyboardButton("⬅️ НАЗАД",callback_data="menu_page1"),
-  InlineKeyboardButton("➡️ ДАЛЕЕ",callback_data="menu_page3")
- )
- return kb
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("✊ КНБ", callback_data="menu_rps"),
+        InlineKeyboardButton("⚽ Спорт", callback_data="menu_sport"),
+        InlineKeyboardButton("🎳 Боулинг", callback_data="menu_bowling"),
+        InlineKeyboardButton("🎯 Дартс", callback_data="menu_darts"),
+        InlineKeyboardButton("🏀 Баскетбол", callback_data="menu_basketball"),
+        InlineKeyboardButton("👥 Рефералы", callback_data="menu_referral"),
+        InlineKeyboardButton("🎫 Промокод", callback_data="menu_promo"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="menu_page1"),
+        InlineKeyboardButton("➡️ ДАЛЕЕ", callback_data="menu_page3")
+    )
+    return kb
+
 def get_main_keyboard_page3():
- kb=InlineKeyboardMarkup(row_width=2)
- kb.add(
-  InlineKeyboardButton("💣 Мины",callback_data="menu_mines"),
-  InlineKeyboardButton("🃏 Блэкджек",callback_data="menu_blackjack"),
-  InlineKeyboardButton("🎁 Задания",callback_data="menu_quests"),
-  InlineKeyboardButton("🏆 Топ",callback_data="menu_top"),
-  InlineKeyboardButton("🏅 Достижения",callback_data="menu_achievements"),
-  InlineKeyboardButton("🎖️ Значки",callback_data="menu_badges"),
-  InlineKeyboardButton("🏅 Титулы",callback_data="menu_titles"),
-  InlineKeyboardButton("📊 Прогресс",callback_data="menu_progress"),
-  InlineKeyboardButton("🌟 Престиж",callback_data="menu_prestige"),
-  InlineKeyboardButton("❓ Помощь",callback_data="menu_help"),
-  InlineKeyboardButton("⬅️ НАЗАД",callback_data="menu_page2")
- )
- return kb
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("💣 Мины", callback_data="menu_mines"),
+        InlineKeyboardButton("🃏 Блэкджек", callback_data="menu_blackjack"),
+        InlineKeyboardButton("🎁 Задания", callback_data="menu_quests"),
+        InlineKeyboardButton("🏆 Топ", callback_data="menu_top"),
+        InlineKeyboardButton("🏅 Достижения", callback_data="menu_achievements"),
+        InlineKeyboardButton("🎖️ Значки", callback_data="menu_badges"),
+        InlineKeyboardButton("🏅 Титулы", callback_data="menu_titles"),
+        InlineKeyboardButton("📊 Прогресс", callback_data="menu_progress"),
+        InlineKeyboardButton("🌟 Престиж", callback_data="menu_prestige"),
+        InlineKeyboardButton("❓ Помощь", callback_data="menu_help"),
+        InlineKeyboardButton("⬅️ НАЗАД", callback_data="menu_page2")
+    )
+    return kb
 
 SUITS=["♠","♥","♦","♣"]
 RANKS_CARDS=["2","3","4","5","6","7","8","9","10","J","Q","K","A"]
